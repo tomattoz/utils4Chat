@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23788" systemVersion="24E263" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="AnswerDBO" representedClassName="AnswerDBO" syncable="YES" codeGenerationType="class">
+        <attribute name="date" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="error" optional="YES" attributeType="String"/>
+        <attribute name="image" optional="YES" attributeType="String"/>
+        <attribute name="sending" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="text" optional="YES" attributeType="String"/>
+        <relationship name="message" maxCount="1" deletionRule="Nullify" destinationEntity="MessageDBO" inverseName="answer" inverseEntity="MessageDBO"/>
+        <relationship name="question" maxCount="1" deletionRule="Nullify" destinationEntity="QuestionDBO" inverseName="answer" inverseEntity="QuestionDBO"/>
+    </entity>
+    <entity name="MessageDBO" representedClassName="MessageDBO" syncable="YES" codeGenerationType="class">
+        <attribute name="index" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="remoteID" optional="YES" attributeType="String"/>
+        <relationship name="answer" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="AnswerDBO" inverseName="message" inverseEntity="AnswerDBO"/>
+        <relationship name="question" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="QuestionDBO" inverseName="message" inverseEntity="QuestionDBO"/>
+    </entity>
+    <entity name="PresetDBO" representedClassName="PresetDBO" syncable="YES" codeGenerationType="class">
+        <attribute name="iconJson" attributeType="String" valueTransformerName="IconDBOValueTransformer" customClassName="IconDBO"/>
+        <attribute name="iconVariantsJson" optional="YES" attributeType="String" valueTransformerName="IconDBOArrayValueTransformer" customClassName="[IconDBO]"/>
+        <attribute name="instructions" attributeType="String" defaultValueString=""/>
+        <attribute name="modificationDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" attributeType="String" defaultValueString=""/>
+        <attribute name="presetID" attributeType="String"/>
+        <attribute name="provider" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="question" optional="YES" toMany="YES" deletionRule="Deny" destinationEntity="QuestionDBO" inverseName="preset" inverseEntity="QuestionDBO"/>
+    </entity>
+    <entity name="QuestionDBO" representedClassName="QuestionDBO" syncable="YES" codeGenerationType="class">
+        <attribute name="date" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="text" attributeType="String"/>
+        <relationship name="answer" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="AnswerDBO" inverseName="question" inverseEntity="AnswerDBO"/>
+        <relationship name="message" maxCount="1" deletionRule="Nullify" destinationEntity="MessageDBO" inverseName="question" inverseEntity="MessageDBO"/>
+        <relationship name="preset" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="PresetDBO" inverseName="question" inverseEntity="PresetDBO"/>
+        <relationship name="room" maxCount="1" deletionRule="Nullify" destinationEntity="RoomDBO" inverseName="questions" inverseEntity="RoomDBO"/>
+    </entity>
+    <entity name="RoomDBO" representedClassName="RoomDBO" syncable="YES" codeGenerationType="class">
+        <attribute name="closeDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="openDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="remoteID" optional="YES" attributeType="String"/>
+        <relationship name="questions" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="QuestionDBO" inverseName="room" inverseEntity="QuestionDBO"/>
+    </entity>
+</model>

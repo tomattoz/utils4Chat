@@ -3,10 +3,12 @@
 import SwiftUI
 import Parsley
 import Combine
+import Utils9Client
+import Utils9
 
-private extension NSColor {
-    static let messageCode = NSColor(named: "message.color.code") ?? .green
-    static let messageLink = NSColor(named: "message.color.link") ?? .blue
+private extension Color9 {
+    static let messageCode = Color9(named: "message.color.code") ?? .green
+    static let messageLink = Color9(named: "message.color.link") ?? .blue
 }
 
 private extension String {
@@ -205,6 +207,16 @@ internal extension String {
 
 internal extension AttributedString {
     init(message string: String) {
+        do {
+            try self.init(tryMessage: string)
+        }
+        catch {
+            self.init(string)
+            log(error)
+        }
+    }
+    
+    init(tryMessage string: String) throws {
         let string = string.fixingLineBreaks
         
         let html =
@@ -222,7 +234,7 @@ internal extension AttributedString {
             color: blue;
         }
         </style>
-        \(try! Parsley.html(string, options: [.unsafe, .hardBreaks]))
+        \(try Parsley.html(string, options: [.unsafe, .hardBreaks]))
         """
         
         let data = html.data(using: .utf8)!
@@ -231,9 +243,7 @@ internal extension AttributedString {
             .characterEncoding: String.Encoding.utf8.rawValue
         ]
 
-        let attributedString = NSMutableAttributedString(html: data,
-                                                         options: options,
-                                                         documentAttributes: nil)
+        let attributedString = try NSMutableAttributedString(html: data, options: options)
 
         guard let attributedString else {
             self.init(string)
@@ -268,18 +278,18 @@ internal extension AttributedString {
             .foregroundColor,
             in: NSRange(0 ..< attributedString.length)) {  value, range, stop in
             
-            if let color = value as? NSColor {
+            if let color = value as? Color9 {
                 // Code
-                if color == NSColor.red {
+                if color == Color9.red {
                     attributedString.addAttribute(.foregroundColor,
-                                                  value: NSColor.messageCode,
+                                                  value: Color9.messageCode,
                                                   range: range)
                 }
 
                 // Link
-                if color == NSColor.blue {
+                if color == Color9.blue {
                     attributedString.addAttribute(.foregroundColor,
-                                                  value: NSColor.messageLink,
+                                                  value: Color9.messageLink,
                                                   range: range)
                 }
             }

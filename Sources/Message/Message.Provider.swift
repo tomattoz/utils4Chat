@@ -23,7 +23,7 @@ public extension Message.Provider {
 public extension Message.Provider {
     @MainActor static let preview: Message.Provider.Proto = Message.Provider.General(
         plan: .init(.free),
-        inner: HttpProviderImpl(salt: ""),
+        inner: HttpProviderImpl(url: String.makeVar {""}, salt: ""),
         user: String.emptyVar,
         email: String.emptyVar)
 }

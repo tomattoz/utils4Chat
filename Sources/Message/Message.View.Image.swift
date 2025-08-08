@@ -86,9 +86,9 @@ extension Message {
         
         var body: some View {
             VStack(spacing: 0) {
-                if let item = vm.item, let nsImage = item.image {
+                if let item = vm.item, let image = item.image {
                     AppearanceAnimation(appearance: $vm.animateImageAppearance, duration: 0.25) {
-                        Image(item: item, nsImage: nsImage)
+                        Image(item: item, image: image)
                     }
                 }
                 
@@ -110,8 +110,8 @@ extension Message {
             }
         }
         
-        func Image(item: Message.ImageStore.Image, nsImage: NSImage) -> some View {
-            SwiftUI.Image(nsImage: nsImage)
+        func Image(item: Message.ImageStore.Image, image: Image9) -> some View {
+            SwiftUI.Image(image: image)
                 .resizable()
                 .scaledToFit()
                 .messageImage()
@@ -136,12 +136,19 @@ extension Message {
                     return provider
                 }
                 .background {
+                    #if os(macOS)
                     NSControlRepresentation() // prevent window dragging
+                    #endif
                 }
                 .contextMenu {
                     Button {
+                        #if os(macOS)
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.writeObjects([nsImage])
+                        NSPasteboard.general.writeObjects([image])
+                        #else
+                        UIPasteboard.general.items = []
+                        UIPasteboard.general.image = image
+                        #endif
                     } label: {
                         Label("Copy", systemImage: "document.on.document")
                     }

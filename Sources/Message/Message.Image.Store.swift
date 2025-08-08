@@ -2,7 +2,6 @@
 
 import Foundation
 import Combine
-import AppKit
 import Utils9AIAdapter
 import Utils9
 import Utils9Client
@@ -14,7 +13,7 @@ extension String {
 extension Message.ImageStore {
     struct Image {
         let localURL: URL
-        let image: NSImage?
+        let image: Image9?
         let error: Swift.Error?
         
         var loaded: Bool {
@@ -181,13 +180,13 @@ public extension Message {
             let item: Image
             let id = id(local: url)
             
-            if let nsImage = NSImage(contentsOf: url) {
-                item = Image(localURL: url, image: nsImage, error: nil)
+            if let uiImage = Image9(contentsOf: url) {
+                item = Image(localURL: url, image: uiImage, error: nil)
             }
             else {
                 item = Image(localURL: url, image: nil, error: Error.load(id))
             }
-
+            
             images[id] = item
             loading[id] = nil
             await publisher.complete(item)

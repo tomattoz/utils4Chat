@@ -33,7 +33,7 @@ extension Message {
         @ObservedObject private var history: Message.History
         @EnvironmentObject private var state: Message.ViewState
 
-        @State private var tableView: NSTableView?
+        @State private var tableView: TableView9?
         @State private var scrollOffset: CGPoint = .zero
         @Namespace private var topID
         private let coordinateSpace = UUID()
@@ -78,7 +78,9 @@ extension Message {
                     .coordinateSpace(name: coordinateSpace)
                     .environment(\.managedObjectContext, DataBase.shared.context)
                     .onChange(of: room.all) { _ in
+                        #if os(macOS)
                         tableView?.enclosingScrollView?.verticalScroller?.isHidden = true
+                        #endif
 
                         withAnimation {
                             scrollView.scrollTo(topID, anchor: .top)
@@ -87,10 +89,12 @@ extension Message {
                     .onChange(of: filter) {
                         store.filter($0)
                     }
-                    .introspect(.list) { (tableView: NSTableView) in
+                    .introspect(.list) { (tableView: TableView9) in
                         self.tableView = tableView
                         tableView.backgroundColor = .clear
+                        #if os(macOS)
                         tableView.enclosingScrollView?.drawsBackground = false
+                        #endif
                     }
 
                     if state.showHistory, scrollOffset.y > 5000 {

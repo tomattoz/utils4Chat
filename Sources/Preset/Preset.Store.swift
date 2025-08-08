@@ -16,11 +16,9 @@ public extension Preset.Store {
             self.newFavourites = newFavourites
         }
         
-        #if DEBUG
-        static var empty: Self {
+        public static var empty: Self {
             .init(library: [], favourites: [], newFavourites: [])
         }
-        #endif
     }
 }
 

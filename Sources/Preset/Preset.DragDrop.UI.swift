@@ -183,20 +183,24 @@ private extension Preset {
 private extension Preset {
     class ItemProvider: NSItemProvider {
         func completed(_ callback: @escaping () -> Void) {
+            #if os(macOS)
             Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { timer in
                 guard NSApplication.shared.currentEvent?.type.isDrag != true else { return }
                 callback()
                 timer.invalidate()
             }
+            #endif
         }
     }
 }
 
+#if os(macOS)
 private extension NSEvent.EventType {
     var isDrag: Bool {
         self == .leftMouseUp || self == .leftMouseDragged
     }
 }
+#endif
 
 private extension Array where Element == Preset.Model {
     func with(_ dragging: Preset.Drag, force: Bool = false) -> Self {

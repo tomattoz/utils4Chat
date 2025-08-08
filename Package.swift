@@ -11,7 +11,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/tomattoz/utils", branch: "master"),
-        .package(url: "https://github.com/tomattoz/utils4Clients", branch: "master"),
+        .package(url: "https://github.com/tomattoz/utils4Client", branch: "master"),
         .package(url: "https://github.com/tomattoz/utils4AdapterAI", branch: "master"),
         .package(url: "https://github.com/tomattoz/utils4AsyncHttpClient", branch: "master"),
         .package(url: "https://github.com/siteline/swiftui-introspect", from: "1.0.0"),
@@ -23,7 +23,7 @@ let package = Package(
                     .product(name: "Utils9", package: "utils"),
                     .product(name: "Utils9AIAdapter", package: "utils4AdapterAI"),
                     .product(name: "Utils9AsyncHttpClient", package: "utils4AsyncHttpClient"),
-                    .product(name: "Utils9Client", package: "utils4Clients"),
+                    .product(name: "Utils9Client", package: "utils4Client"),
                     .product(name: "SwiftUIIntrospect", package: "SwiftUI-Introspect"),
                     .product(name: "Parsley", package: "Parsley"),
                 ],

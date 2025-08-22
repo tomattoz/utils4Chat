@@ -9,7 +9,6 @@ public extension Message.Room {
     protocol Delegate {
         func canSend(_ room: Message.Room, sending: Message.Model) async -> Bool
         func willSend(_ room: Message.Room, question: Message.Model, content: Message.Content)
-        func didSend(_ room: Message.Room, question: Message.Model, content: Message.Content)
         func didReceive(_ room: Message.Room, answer: Message.Model, content: Message.Content)
     }
 }
@@ -23,14 +22,13 @@ public extension Message.Room {
         }
         
         public func willSend(_ room: Message.Room, question: Message.Model, content: Message.Content) {}
-        public func didSend(_ room: Message.Room, question: Message.Model, content: Message.Content) {}
         public func didReceive(_ room: Message.Room, answer: Message.Model, content: Message.Content) {}
     }
 }
 
 public extension Message {
     class Room: ObservableObject {
-        @Published private(set) public var all: [Message.Model]
+        @Published private(set) public var all: [Message.ViewModel]
         private let provider: MessageProvider
         private let identifier: Message.Identification
         private let presets: Preset.Store
@@ -63,13 +61,13 @@ public extension Message {
             self.provider = Message.Provider.preview
             self.presets = presets
             self.delegate = delegate
-            all = messages
+            all = messages.map { .init($0) }
 
             dbo = RoomDBO.open(in: DataBase.shared.context)
             DataBase.shared.context.saveIfNeeded()
         }
         #endif
-
+        
         var smallestIndex: Int {
             Int(identifier.first)
         }
@@ -83,22 +81,24 @@ public extension Message {
             meta = nil
         }
 
-        public func send(_ text: String) {
+        public func send(_ text: String, preset: Preset.Model) {
             guard text.count > 0 else { return }
-            let question = append(question: text)
+            let question = append(question: text, preset: preset)
             let sending = append(sending: question.model)
+
+            delegate.willSend(self, question: question.model, content: question.content)
 
             Task {
                 guard await validate(sending: sending) else { return }
-                var response = await provider.request(ancestor: sending, all: all)
+                let allModels = all.map { $0.message }
+                var response = await provider.request(ancestor: sending, all: allModels)
 
                 // try to repeate once
                 if case let .failure(_, error) = response {
                     log(event: "failure_repeat", parameters: ["error": error.localizedDescription])
-                    response = await provider.request(ancestor: sending, all: all)
+                    response = await provider.request(ancestor: sending, all: allModels)
                 }
                 else {
-                    delegate.didSend(self, question: question.model, content: question.content)
                     UserDefaults.standard.increaseSymbolsCountThisDay(text.count)
                 }
 
@@ -107,7 +107,6 @@ public extension Message {
 
             log(event: "question", parameters: ["text": String(text.prefix(64)),
                                                 "length": "\(text.count)"])
-            delegate.willSend(self, question: question.model, content: question.content)
         }
 
         func resend(_ message: Message.Model) {
@@ -127,7 +126,8 @@ public extension Message {
 
             Task {
                 guard await validate(sending: sending) else { return }
-                let response = await provider.request(ancestor: sending, all: all)
+                let allModels = all.map { $0.message }
+                let response = await provider.request(ancestor: sending, all: allModels)
                 await answerMainActor(to: sending, response: response)
             }
         }
@@ -136,11 +136,11 @@ public extension Message {
             await delegate.canSend(self, sending: sending)
         }
 
-        /*private*/ func append(question text: String)
+        /*private*/ func append(question text: String, preset: Preset.Model)
         -> (model: Message.Model, content: Message.Content) {
             let id = identifier.pop()
             var text = text
-            
+                        
             text = text.trimmingCharacters(in: .newlines)
             text = String(text.trimmingSuffix { character in
                 CharacterSet.whitespaces.contains(character)
@@ -157,10 +157,10 @@ public extension Message {
                 ])
             }
             
-            let kind = Message.Kind.question(content, presets.selected)
+            let kind = Message.Kind.question(content, preset)
             let result = Message.Model(id: id, kind: kind)
             
-            all.append(result)
+            all.append(.init(result))
             result.save(in: dbo, bag: &bag)
             
             return (result, content)
@@ -169,11 +169,11 @@ public extension Message {
         @discardableResult private func append(sending question: Message.Model) -> Message.Model {
             let result = Message.Model(id: identifier.pop(), kind: .sending(question))
 
-            if let index = all.firstIndex(of: question) {
-                all.insert(result, at: all.index(after: index))
+            if let index = all.firstIndex { $0.id == question.viewModelID } {
+                all.insert(.init(result), at: all.index(after: index))
             }
             else {
-                all.append(result)
+                all.append(.init(result))
             }
             
             result.save(in: dbo, bag: &bag)
@@ -187,25 +187,21 @@ public extension Message {
         }
 
         @discardableResult public func answer(to request: Message.Model,
-                                                   response: Message.Kind) -> Message.Model? {
+                                              response: Message.Kind) -> Message.Model? {
             let result = Message.Model(id: identifier.pop(), kind: response)
             let question = request.question
             
-            if case .answer(_, let content) = response {
-                if all.contains(request) && request != question {
-                    all.replace(src: request, dst: result)
-                }
-                else if let index = all.firstIndex(of: question) {
-                    all.insert(result, at: all.index(after: index))
+            switch response {
+            case .answer(_ , let content):
+                all.remove(request)
+                
+                if let index = all.firstIndex { $0.id == request.viewModelID } {
+                    all.insert(.init(result), at: all.index(after: index))
                 }
                 else {
-                    all.append(result)
+                    all.append(.init(result))
                 }
-                
-                if let ancestor = request.ancestor, ancestor != question {
-                    all.replace(src: ancestor, dst: question)
-                }
-                
+                                
                 content.publisher.sink { _ in
                     if content.image != nil {
                         log(event: "answer_image")
@@ -222,20 +218,17 @@ public extension Message {
                 .store(in: &bag)
                 
                 delegate.didReceive(self, answer: result, content: content)
-            }
-            else {
-                all.remove(request)
-                
-                if let ancestor = request.ancestor {
-                    all.replace(src: ancestor, dst: result)
-                }
-            }
-
-            if case let .failure(_, error) = response {
+           
+            case .failure(_ , let error):
+                all.replace(src: request.question, dst: result)
                 log(error)
                 log(event: "failure", parameters: ["error": error.localizedDescription])
+                
+            case .question, .sending:
+                assertionFailure()
+                break;
             }
-            
+                        
             result.save(in: dbo, bag: &bag)
             return result
         }
@@ -284,10 +277,13 @@ public extension Message.Room {
     }
 }
 
-private extension Array where Element == Message.Model {
-    @discardableResult mutating func replace(src: Element, dst: Element) -> Bool {
-        guard let index = firstIndex(where: { $0.id == src.id }) else { assertionFailure(); return false }
-        self[index] = dst
+private extension Array where Element == Message.ViewModel {
+    @discardableResult mutating func replace(src: Message.Model, dst: Message.Model) -> Bool {
+        guard let index = firstIndex(where: { $0.id == src.viewModelID }) else {
+            assertionFailure(); return false
+        }
+        
+        self[index].message = dst
         return true
     }
 

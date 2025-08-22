@@ -151,7 +151,7 @@ extension Message.Content {
         case .hidden: "hidden"
         case .image(let data): data.id
         case .meta: "meta"
-        case .composite(let contents): contents.map(\.id).joined().sha256short
+        case .composite(let contents): contents.map(\.id).joined()
         case .publisher(let publisher): publisher.value.id
         }
     }
@@ -167,6 +167,19 @@ extension Message.Content {
         }
     }
     
+    var textObject: Message.Text? {
+        switch self {
+        case .text(let data):
+            return data
+        case .hidden, .image, .meta:
+            return nil
+        case .composite(let contents):
+            return contents.lazy.compactMap { $0.textObject }.first
+        case .publisher(let publisher):
+            return publisher.value.textObject
+        }
+    }
+
     public var publisher: AnyPublisher<Message.Content, Never> {
         switch self {
         case .text: Just(self).eraseToAnyPublisher()

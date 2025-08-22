@@ -6,7 +6,7 @@ import Utils9AIAdapter
 extension Message {
     struct ErrorButton: View {
         let messages: Message.Room
-        let message: Message.Model
+        let vm: Message.ViewModel
         let error: Error
         @State private var alertVisible = false
 
@@ -36,7 +36,7 @@ extension Message {
 
 private extension Message.ErrorButton {
     func tryAgain() {
-        messages.resend(message)
+        messages.resend(vm.message)
     }
 }
 
@@ -48,9 +48,9 @@ struct MessagesErrorButton_Previews: PreviewProvider {
 
     static var previews: some View {
         Message.ErrorButton(messages: .preview(.init()),
-                            message: .init(id: 0, kind: .question(.text(.init(
+                            vm: .init(.init(id: 0, kind: .question(.text(.init(
                                 id: "0",
-                                text: "Some question")), .chatGPT)),
+                                text: "Some question")), .chatGPT))),
                             error: PreviewError.error("Some error"))
     }
 }

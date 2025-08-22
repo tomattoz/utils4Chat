@@ -71,6 +71,17 @@ public extension Message.Kind {
     }
 }
 
+extension Message.Model {
+    var viewModelID: UInt {
+        switch kind {
+        case .question: id
+        case .failure(let question, _): question.id
+        case .sending(let question): id
+        case .answer: id
+        }
+    }
+}
+
 public extension Message.Model {
     var question: Self {
         switch self.kind {
@@ -89,6 +100,15 @@ public extension Message.Model {
         case .failure(let ancestor, _): return ancestor
         }
     }
+    
+    var preset: Preset.Model {
+        switch self.kind {
+        case .question(_, let preset): return preset
+        case .answer: return question.preset
+        case .failure: return question.preset
+        case .sending: return question.preset
+        }
+    }
 }
 
 extension Message.Model: Equatable {
@@ -97,9 +117,9 @@ extension Message.Model: Equatable {
     }
 }
 
-extension Array where Element == Message.Model {
-    func filtered(_ filter: String) -> [Message.Model] {
+extension Array where Element == Message.ViewModel {
+    func filtered(_ filter: String) -> [Message.ViewModel] {
         guard !filter.isEmpty else { return self }
-        return self.filter { $0.text.lowercased().contains(filter.lowercased()) }
+        return self.filter { $0.message.text.lowercased().contains(filter.lowercased()) }
     }
 }

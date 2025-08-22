@@ -19,7 +19,7 @@ public final class DataBase: Sendable {
             try coordinator.addPersistentStore(ofType: NSSQLiteStoreType, configurationName: nil, at: url, options: nil)
         }
         catch {
-            print("Attempted to clear persistent store: " + error.localizedDescription)
+            log(error: "Attempted to clear persistent store: " + error.localizedDescription)
         }
 
     }

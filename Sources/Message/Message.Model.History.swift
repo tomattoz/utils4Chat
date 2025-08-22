@@ -9,7 +9,7 @@ private extension Int {
 
 public extension Message {
     class History: ObservableObject {
-        public var messages: [Message.Model] {
+        public var messages: [Message.ViewModel] {
             get {
                 if let postponedFilter {
                     self.postponedFilter = nil
@@ -32,7 +32,7 @@ public extension Message {
             }
         }
 
-        @Published private var privateMessages: [Message.Model]
+        @Published private var privateMessages: [Message.ViewModel]
         private let state: Message.ViewState
         private var postponedFilter: String? = nil
         private var lastFilter: String = ""
@@ -40,42 +40,44 @@ public extension Message {
 
         init(state: Message.ViewState) {
             self.state = state
-            self.privateMessages = MessageDBO.history()
+            self.privateMessages = MessageDBO.history().map { .init($0) }
         }
 
         func reload() {
-            self.privateMessages = MessageDBO.history(filter: lastFilter)
+            self.privateMessages = MessageDBO.history(filter: lastFilter).map { .init($0) }
         }
         
         func load(appeared message: Message.Model, filter: String) {
-            var history = self.messages
-            self.lastFilter = filter
-
-            guard
-                let index = history.firstIndex(of: message),
-                let last = history.last
-            else { return }
-            
-            let loadCount = Int.blockSize / 2 - (history.count - index)
-            let removeCount = max(0, history.count - index - .blockSize * 2)
-            var changed = false
-            
-            if loadCount > 0 {
-                let prev = MessageDBO
-                    .prev(index: Int(last.id),
-                          count: max(.blockSize, loadCount),
-                          filter: filter)
-                    .mapAndRelease()
-                history += prev
-                changed = true
-            }
-            else if removeCount > 0 {
-                history.removeLast(removeCount)
-                changed = true
-            }
-
-            if changed {
-                self.messages = history
+            autoreleasepool {
+                var history = self.messages
+                self.lastFilter = filter
+                
+                guard
+                    let index = history.firstIndex { $0.id == message.viewModelID },
+                    let last = history.last
+                else { return }
+                
+                let loadCount = Int.blockSize / 2 - (history.count - index)
+                let removeCount = max(0, history.count - index - .blockSize * 2)
+                var changed = false
+                
+                if loadCount > 0 {
+                    let prev = MessageDBO
+                        .prev(index: Int(last.id),
+                              count: max(.blockSize, loadCount),
+                              filter: filter)
+                        .mapAndRelease()
+                    history += prev.map { .init($0) }
+                    changed = true
+                }
+                else if removeCount > 0 {
+                    history.removeLast(removeCount)
+                    changed = true
+                }
+                
+                if changed {
+                    self.messages = history
+                }
             }
         }
 
@@ -86,7 +88,8 @@ public extension Message {
                 tryLog {
                     self.messages = try MessageDBO
                         .last(count: .blockSize, filter: string)
-                        .compactMap { .init($0) }
+                        .compactMap { Message.Model($0) }
+                        .map { .init($0) }
                 }
             }
             else {

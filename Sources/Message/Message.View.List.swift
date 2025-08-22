@@ -11,16 +11,19 @@ private extension Int {
 
 public extension Message {
     struct List: SwiftUI.View {
-        var room: Message.Room
+        private var room: Message.Room
+        private let content: ContentBuilder
         @EnvironmentObject private var store: Message.Store
         @EnvironmentObject private var state: Message.ViewState
 
-        public init(room: Message.Room) {
+        public init(room: Message.Room, content: ContentBuilder = Message.contentViewBuilder) {
             self.room = room
+            self.content = content
         }
         
         public var body: some SwiftUI.View {
-            ListPrivate(store: store, room: room, filter: $state.filter)
+            ListPrivate(store: store, room: room, builder: content, filter: $state.filter)
+                .environmentObject(room)
         }
     }
 }
@@ -37,15 +40,20 @@ extension Message {
         @State private var scrollOffset: CGPoint = .zero
         @Namespace private var topID
         private let coordinateSpace = UUID()
+        private let builder: ContentBuilder
 
-        init(store: Message.Store, room: Message.Room, filter: Binding<String>) {
+        init(store: Message.Store,
+             room: Message.Room,
+             builder: ContentBuilder,
+             filter: Binding<String>) {
             self.room = room
             self.store = store
             self.history = store.history
+            self.builder = builder
             _filter = filter
         }
 
-        var messages: [Message.Model] {
+        var messages: [Message.ViewModel] {
             room.all.filtered(filter).reversed()
             + (state.showHistory ? store.history.messages : [])
         }
@@ -60,13 +68,13 @@ extension Message {
                                 .id(topID)
 
                             LazyVStack {
-                                ForEach(messages, id: \.listID) { message in
-                                    Message.ItemView(room: room, message: message)
+                                ForEach(messages) { vm in
+                                    Message.ItemView(room: room, message: vm, builder: builder)
                                     .frame(maxWidth: .infinity)
-                                    .id(message.listID)
+                                    .id(vm.id)
                                     .onAppear {
-                                        if state.showHistory, message.id < room.smallestIndex {
-                                            store.history.load(appeared: message,
+                                        if state.showHistory, vm.id < room.smallestIndex {
+                                            store.history.load(appeared: vm.message,
                                                                filter: filter)
                                         }
                                     }
@@ -137,7 +145,7 @@ extension Message {
 #if DEBUG
 struct MessagesView_Previews: PreviewProvider {
     static var previews: some View {
-        Message.List(room: .preview(.init()))
+        Message.List(room: .preview(.init()), content: Message.contentViewBuilder)
             .environmentObject(Message.Store.preview)
             .environmentObject(Message.ViewState())
     }

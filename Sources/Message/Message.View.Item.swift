@@ -1,71 +1,46 @@
 //  Created by Ivan Kh on 11.12.2024.
 
 import SwiftUI
-import Parsley
 import Combine
 import Utils9Client
 import Utils9
 
-private extension Color9 {
-    static let messageCode = Color9(named: "message.color.code") ?? .green
-    static let messageLink = Color9(named: "message.color.link") ?? .blue
-}
-
-private extension String {
-    static let lineBreakUUID = "ba2ff5cd-61fc-4465-885a-f200bcbf8ee9"
+private extension EdgeInsets {
+    static let answer = EdgeInsets(top: 7, leading: 0, bottom: 7, trailing: 0)
+    static let question = EdgeInsets(top: 15, leading: 0, bottom: 15, trailing: 0)
 }
 
 extension Message {
     struct ItemView: SwiftUI.View {
         let room: Message.Room
-        let message: Message.Model
+        let vm: Message.ViewModel
+        let builder: ContentBuilder
 
-        init(room: Message.Room, message: Message.Model) {
+        init(room: Message.Room, message: Message.ViewModel, builder: ContentBuilder) {
             self.room = room
-            self.message = message
+            self.vm = message
+            self.builder = builder
         }
         
         var body: some SwiftUI.View {
             ZStack {
-                switch message.kind {
-                case .question:
-                    EmptyView()
+                switch vm.message.kind {
+                case .question, .failure:
+                    QuestionView(vm: vm, room: room, builder: builder)
                     
                 case .answer(let ancestor, let content):
-                    VStack(spacing: 0) {
-                        Answer(message: message, content: content)
-
-                        HContainer(ancestor.question.kind) {
-                            Question(message: ancestor.question)
+                    PrecachedText(vm: vm, insets: .answer) {
+                        VStack {
+                            self.builder.view(vm: vm, builder: builder)
                         }
-                    }
-
-                case .failure(_, let error):
-                    HContainer(message.kind) {
-                        Failure(error: error)
-                        Question(message: message.question)
                     }
                     
                 case .sending(let ancestor):
-                    VStack(spacing: 0) {
-                        HContainer(message.kind) {
-                            Sending()
-                        }
-
-                        HContainer(ancestor.question.kind) {
-                            Question(message: ancestor.question)
-                        }
+                    HContainer(kind: vm.message.kind) {
+                        Sending()
                     }
                 }
             }
-        }
-
-        func Question(message: Message.Model) -> some View {
-            ChatBubble(direction: message.kind.direction) {
-                ContentView(message: message, content: message.content)
-            }
-            .frame(minWidth: 20)
-            .padding(.vertical, 8)
         }
 
         func Sending() -> some View {
@@ -73,233 +48,56 @@ extension Message {
                 .padding(.top, 12)
                 .padding(.bottom, 9)
                 .padding(.horizontal, 15)
-                .background(message.kind.backgroundColor)
-        }
-        
-        func Answer(message: Message.Model, content: Message.Content) -> some View {
-            VStack {
-                ContentView(message: message, content: content)
-            }
-        }
-
-        func Failure(error: Error) -> some View {
-            Message.ErrorButton(messages: room, message: message, error: error)
-        }
-        
-        @ViewBuilder func HContainer<Content: View>(_ kind: Message.Kind,
-                                                    @ViewBuilder body: () -> Content) -> some View {
-            HStack {
-                if kind.direction == .right {
-                    Spacer()
-                }
-                
-                body()
-
-                if kind.direction == .left {
-                    Spacer()
-                }
-            }
-            .padding(kind.paddingEdge, 50)
+                .background(vm.message.kind.backgroundColor)
         }
     }
 }
 
-private struct ContentView: View {
-    let message: Message.Model
-    let content: Message.Content
-    
-    init(message: Message.Model, content: Message.Content) {
-        self.message = message
-        self.content = content
-    }
-    
-    var body: some View {
-        switch content {
-        case .text(let data):
-            HContainer(message.kind) {
-                Message.TextView(kind: message.kind) {
-                    Text(AttributedString(message: data.text(message.kind)))
+private extension Message {
+    struct QuestionView: SwiftUI.View {
+        @ObservedObject var vm: ViewModel
+        let room: Room
+        let builder: ContentBuilder
+        
+        var body: some View {
+            PrecachedText(vm: vm, insets: .question) {
+                HContainer(kind: vm.message.kind) {
+                    if case .failure(_, let error) = vm.message.kind {
+                        Message.ErrorButton(messages: room, vm: vm, error: error)
+                    }
+                    
+                    ChatBubble(direction: vm.message.kind.direction) {
+                        self.builder.view(vm: vm, builder: builder)
+                    }
+                    .frame(minWidth: 20)
+                    .padding(.vertical, 8)
                 }
             }
-            
-        case .hidden:
-            EmptyView()
-            
-        case .image(let data):
-            HContainer(message.kind) {
-                Message.ImageView(message: message, data: data)
-            }
-            
-        case .meta:
-            EmptyView()
-            
-        case .composite(let contents):
-            ForEach(contents.reversed()) { content in
-                VStack(spacing: 0) {
-                    ContentView(message: message, content: content)
-                }
-            }
-            
-        case .publisher(let publisher):
-            PublishedContentView(message: message, publisher: publisher)
         }
     }
+}
+
+private struct HContainer<Content: View>: SwiftUI.View {
+    let kind: Message.Kind
+    @ViewBuilder var content: () -> Content
     
-    @ViewBuilder func HContainer<Content: View>(_ kind: Message.Kind,
-                                                @ViewBuilder body: () -> Content) -> some View {
-        if kind.direction == .left {
-            HStack {
-                body()
+    var body: some View {
+        HStack {
+            if kind.direction == .right {
                 Spacer()
             }
-            .padding(kind.paddingEdge, 50)
-        }
-        else {
-            body()
-        }
-    }
-}
-
-private struct PublishedContentView: View {
-    let message: Message.Model
-    let publisher: AnyPublisher<Message.Content, Never>
-    @State var content: Message.Content
-    
-    init(message: Message.Model, publisher: CurrentValueSubject<Message.Content, Never>) {
-        self.message = message
-        self.content = publisher.value
-
-        self.publisher = publisher
-            .throttle(for: .seconds(0.5), scheduler: RunLoop.main, latest: true)
-            .eraseToAnyPublisher()
-    }
-    
-    var body: some View {
-        ContentView(message: message, content: content)
-            .onReceive(publisher) { newValue in
-                content = newValue
-            }
-    }
-}
-
-internal extension String {
-    var fixingLineBreaks: String {
-        var result = ""
-        var insideCodeBlock = false
-        let lines = self.components(separatedBy: "\n")
-        
-        for line in lines {
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                insideCodeBlock.toggle()
-                result.append(line + "\n")
-            } else if insideCodeBlock {
-                result.append(line + "\n")
-            } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
-                result.append("\n" + .lineBreakUUID + "\n")
-            } else {
-                result.append(line + "\n")
-            }
-        }
-        
-        return result
-    }
-}
-
-internal extension AttributedString {
-    init(message string: String) {
-        do {
-            try self.init(tryMessage: string)
-        }
-        catch {
-            self.init(string)
-            log(error)
-        }
-    }
-    
-    init(tryMessage string: String) throws {
-        let string = string.fixingLineBreaks
-        
-        let html =
-        """
-        <style>
-        * {
-            font-family: '-apple-system';
-            font-size: 14;
-        }
-        code {
-            font-family: 'ui-monospace';
-            color: red;
-        }
-        a {
-            color: blue;
-        }
-        </style>
-        \(try Parsley.html(string, options: [.unsafe, .hardBreaks]))
-        """
-        
-        let data = html.data(using: .utf8)!
-        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-            .documentType: NSAttributedString.DocumentType.html,
-            .characterEncoding: String.Encoding.utf8.rawValue
-        ]
-
-        let attributedString = try NSMutableAttributedString(html: data, options: options)
-
-        guard let attributedString else {
-            self.init(string)
-            return
-        }
-        
-        // Replace linebreaks placeholders
-        attributedString.mutableString.replaceOccurrences(
-            of: .lineBreakUUID,
-            with: "",
-            range: .init(location: 0, length: attributedString.mutableString.length))
-        
-        // trimSuffixNewlines
-        attributedString.mutableString.trimSuffixNewlines()
-        
-        // fix lists
-        attributedString.enumerateAttribute(
-            .paragraphStyle,
-            in: NSRange(location: 0, length: attributedString.length),
-            options: [ .longestEffectiveRangeNotRequired, .reverse ]) { (value, range, _) in
-                guard let style = value as? NSParagraphStyle, style.textLists.count > 0 else { return }
-                var string = attributedString.attributedSubstring(from: range).string
-                guard string.hasPrefix("\t"), string.hasSuffix("\t") else { return }
-                string = string.trimmingCharacters(in: .init(charactersIn: "\t"))
-                guard let number = Int(string) else { return }
-                string = "\t\(number).\t"
-                attributedString.mutableString.replaceCharacters(in: range, with: string)
-            }
-        
-        // Fix colors
-        attributedString.enumerateAttribute(
-            .foregroundColor,
-            in: NSRange(0 ..< attributedString.length)) {  value, range, stop in
             
-            if let color = value as? Color9 {
-                // Code
-                if color == Color9.red {
-                    attributedString.addAttribute(.foregroundColor,
-                                                  value: Color9.messageCode,
-                                                  range: range)
-                }
-
-                // Link
-                if color == Color9.blue {
-                    attributedString.addAttribute(.foregroundColor,
-                                                  value: Color9.messageLink,
-                                                  range: range)
-                }
+            content()
+            
+            if kind.direction == .left {
+                Spacer()
             }
         }
-                
-        self.init(attributedString)
+        .padding(kind.paddingEdge, 50)
     }
 }
 
-private extension Message.Kind {
+extension Message.Kind {
     var direction: ChatBubbleShape.Direction {
         switch self {
         case .question, .failure: return .right
@@ -341,7 +139,7 @@ private struct ChatBubble<Content>: View where Content: View {
     }
 }
 
-private struct ChatBubbleShape: Shape {
+struct ChatBubbleShape: Shape {
     enum Direction {
         case left
         case right
@@ -373,17 +171,45 @@ private struct ChatBubbleShape: Shape {
     }
 }
 
-private extension Message.Text {
-    func text(_ kind: Message.Kind) -> String {
-        switch kind {
-        case .question:
-        """
-        <pre>
-        \(text)
-        </pre>
-        """
+private extension Message {
+    struct PrecachedText<Content: View>: View {
+        @ViewBuilder var content: () -> Content
+        private var vm: Message.ViewModel
+        private let insets: EdgeInsets
+        @ObservedObject private var cache: TextCacheStore
+
+        init(vm: Message.ViewModel,
+             insets: EdgeInsets,
+             content: @escaping () -> Content) {
+            self.vm = vm
+            self.insets = insets
+            self.content = content
+            _cache = .init(initialValue: vm.cache)
+        }
         
-        default: text
+        var body: some View {
+            Group {
+                if !vm.hasText {
+                    content()
+                }
+                else if cache.hasData {
+                    content()
+                }
+                else {
+                    HStack {
+                        SwiftUI.Text(" ")
+                        Spacer()
+                    }
+                    .padding(insets)
+                }
+            }
+            .id(vm.id)
+            .task {
+                vm.startCaching()
+            }
+            .onDisappear {
+                vm.stopCaching()
+            }
         }
     }
 }

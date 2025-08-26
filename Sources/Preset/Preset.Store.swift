@@ -140,6 +140,16 @@ public extension Preset {
                 selected = favourites.first ?? library.first ?? .chatGPT
             }
         }
+        
+        public func update(_ model: Model) {
+            if let index = library.firstIndex(of: model) {
+                library[index] = model
+            }
+
+            if let index = favourites.firstIndex(of: model) {
+                favourites[index] = model
+            }
+        }
     }
 }
 

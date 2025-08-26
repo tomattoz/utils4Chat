@@ -5,6 +5,7 @@ import Combine
 import AsyncHTTPClient
 import Utils9AIAdapter
 import Utils9AsyncHttpClient
+import Utils9Chat
 import Utils9
 
 public protocol MessageProvider {
@@ -24,6 +25,7 @@ public extension Message.Provider {
     @MainActor static let preview: Message.Provider.Proto = Message.Provider.General(
         plan: .init(.free),
         inner: HttpProviderImpl(url: String.makeVar {""}, salt: ""),
+        presetTraits: Preset.TraitsImpl.shared,
         user: String.emptyVar,
         email: String.emptyVar)
 }
@@ -32,15 +34,18 @@ public extension Message.Provider {
 public extension Message.Provider {
     class General: Message.Provider.Proto {
         @LockedVar private var plan: Payment.Plan
+        private let presetTraits: Preset.Traits
         private let inner: HttpProvider
         private let user: StringVar
         private let email: StringVar
 
         public init(plan: LockedVar<Payment.Plan>,
                     inner: HttpProvider,
+                    presetTraits: Preset.Traits,
                     user: StringVar,
                     email: StringVar) {
             _plan = plan
+            self.presetTraits = presetTraits
             self.inner = inner
             self.user = user
             self.email = email
@@ -174,7 +179,7 @@ public extension Message.Provider {
                                        conversation: .init(meta))
 
             do {
-                return plan == .free
+                return plan == .free || !presetTraits.canStream(preset)
                 ? try await requestWhole(ancestor: ancestor, preset: preset, messages: messages, data: data)
                 : try await requestStream(ancestor: ancestor, preset: preset, messages: messages, data: data)
             }

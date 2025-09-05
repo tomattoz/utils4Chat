@@ -6,7 +6,7 @@ import Combine
 extension Message {
     @objc class TextCache: NSObject, ObservableObject {
         @Published var attributedString: AttributedString? = nil
-        func invalidate() {}
+        func reset() {}
         fileprivate func update(_ content: Message.Text) {}
     }
 }
@@ -36,9 +36,10 @@ extension Message {
         }
 
         func update(_ contents: [Message.Content]) {
+            self.generation += 1
             let generation = self.generation
             
-            DispatchQueue.global().async {
+            DispatchQueue.global(priority: .high).async {
                 for content in contents {
                     if let textObject = content.textObject {
                         self.update(textObject, generation: generation)
@@ -91,7 +92,6 @@ extension Message {
     class TextCacheImpl: TextCache, Identifiable {
         let id: String
         let kind: Message.Kind
-        private var invalidated = false
         private let updateQueue = DispatchQueue(label: "TextCache.update", qos: .background)
         let lock = NSLock()
 
@@ -100,20 +100,15 @@ extension Message {
             self.kind = kind
         }
         
-        override func invalidate() {
-            invalidated = true
+        override func reset() {
             attributedString = nil
         }
 
         fileprivate override func update(_ content: Message.Text) {
             lock.lock()
             defer { lock.unlock() }
-            
-            guard !self.invalidated else { return }
-            
+
             let result = AttributedString(message: content.text(self.kind))
-            
-            guard !self.invalidated else { return }
             
             DispatchQueue.main.sync {
                 self.attributedString = result

@@ -31,6 +31,34 @@ public extension Message.Provider {
 }
 #endif
 
+public extension MessageProvider {
+    func request<T: Decodable>(ancestor: Message.Model, all: [Message.Model]) async throws -> T {
+        let response = await request(ancestor: ancestor, all: all)
+        
+        if case .failure(_, let error) = response {
+            throw error
+        }
+        
+        let resultModel = Message.Model(id: 0, kind: response)
+        let resultString = resultModel.text
+
+        guard let resultData = resultString.data(using: .utf8) else {
+            throw Error9.stringData(resultString)
+        }
+        
+        let result: T
+        
+        do {
+            result = try JSONDecoder().decode(T.self, from: resultData)
+        }
+        catch {
+            throw Error9.jsonDecode(resultString)
+        }
+        
+        return result
+    }
+}
+
 public extension Message.Provider {
     class General: Message.Provider.Proto {
         @LockedVar private var plan: Payment.Plan
@@ -68,7 +96,10 @@ public extension Message.Provider {
                                                         text: dto.message)
             
             if let meta = Message.Meta(dto) {
-                content = .composite([content, Message.Content.meta(meta)])
+                content = .composite(.init(
+                    id: "0",
+                    value: [content.setting(id: "0_0"),
+                            Message.Content.meta(meta.copy(id: "0_1"))]))
             }
 
             _log(provider: dto.provider)
@@ -81,8 +112,7 @@ public extension Message.Provider {
                                    data: ChatDTO.Request) async throws -> Message.Kind {
             let request = try inner.post(at: "ai/chat/stream", data: data)
             let response = try await inner.execute(request)
-            let textID = UUID().uuidString.sha256short
-            let result = CurrentValueSubject<Message.Content, Never>(.text(.init(id: textID, text: "")))
+            let result = CurrentValueSubject<Message.Content, Never>(.text(.init(id: "", text: "")))
             var provider: String?
             
             Task {
@@ -133,11 +163,14 @@ public extension Message.Provider {
                             }
                         
                         await MainActor.run { [resultText, meta] in
-                            var content = Message.Parser.shared.content(id: textID,
+                            var content = Message.Parser.shared.content(id: "0",
                                                                         text: resultText)
-                            
+                                                        
                             if let meta {
-                                content = .composite([content, Message.Content.meta(meta)])
+                                content = .composite(.init(id: "0", value: [
+                                    content.setting(id: "0_0"),
+                                    .meta(meta.copy(id: "0_1"))
+                                ]))
                             }
                             
                             result.send(content)
@@ -161,7 +194,7 @@ public extension Message.Provider {
                 }
             }
             
-            return .answer(ancestor, .publisher(result))
+            return .answer(ancestor, .publisher(.init(id: "", value: result)))
         }
 
         public func request(ancestor: Message.Model,

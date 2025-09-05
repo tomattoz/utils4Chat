@@ -113,6 +113,10 @@ public extension Message {
                 return result
             }
 
+            if let result = nameV3(url) {
+                return result
+            }
+
             log(error: "Unable to fetch name for DALLE image [\(url.absoluteString)]")
             return url.absoluteString.sha256 + ".png"
         }
@@ -143,7 +147,18 @@ public extension Message {
             
             return nil
         }
-        
+
+        func nameV3(_ url: URL) -> String? {
+            return url
+                .query?.removingPercentEncoding?
+                .split(separator: "&")
+                .map { String($0) }
+                .first { $0.hasPrefix("id=") }?
+                .split(separator: "=")
+                .map { String($0) }
+                .last
+        }
+
         func localURL(_ url: URL) -> URL {
             let name = name(url)
             

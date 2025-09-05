@@ -12,20 +12,20 @@ extension Message {
         
         func content(id: String, text: String) -> Message.Content {
             var result: [Message.Content] = [.text(.init(id: id, text: text))]
-            
-            result = tryLog { try DalleText2im(id: id, tag: "image_creator")
-                .parse(result) } ?? result
-            result = tryLog { try DalleText2im(id: id, tag: "dalle\\.text2im")
-                .parse(result) } ?? result
-            result = tryLog { try DalleText2im_partial(id: id, tag: "image_creator")
-                .parse(result) } ?? result
-            result = tryLog { try DalleText2im_partial(id: id, tag: "dalle\\.text2im")
-                .parse(result) } ?? result
-            result = tryLog { try ContentImage(id: id)
+
+            result = tryLog { try ContentImage()
                 .parse(result) } ?? result
             result = tryLog { try ContentImage_partial()
                 .parse(result) } ?? result
-            result = tryLog { try ProgressParser(id: id)
+            result = tryLog { try DalleText2im(tag: "image_creator")
+                .parse(result) } ?? result
+            result = tryLog { try DalleText2im(tag: "dalle\\.text2im")
+                .parse(result) } ?? result
+            result = tryLog { try DalleText2im_partial(tag: "image_creator")
+                .parse(result) } ?? result
+            result = tryLog { try DalleText2im_partial(tag: "dalle\\.text2im")
+                .parse(result) } ?? result
+            result = tryLog { try ProgressParser()
                 .parse(result) } ?? result
 
             if case let .text(data) = result.last {
@@ -36,7 +36,7 @@ extension Message {
                 }
             }
             
-            mergeImages(&result)
+            result = mergeImages(messageID: id, contents: result)
             
             for i in 0 ..< result.count {
                 if case let .image(data) = result[i], data.url != nil, data.progress == nil {
@@ -54,46 +54,56 @@ extension Message {
                 return first
             }
 
-            return .composite(result)
+            for i in 0 ..< result.count {
+                result[i] = result[i].setting(id: "\(id)_\(i)")
+            }
+            
+            return .composite(.init(id: id, value: result))
         }
         
-        private func mergeImages(_ content: inout [Message.Content]) {
-            var index: Int?
+        private func mergeImages(messageID: String, contents: [Message.Content]) -> [Message.Content] {
+            var result = [Message.Content]()
             var target: Message.Image?
             
-            for i in 0 ..< content.count {
-                let content = content[i]
-                
-                guard case let .image(data) = content else {
+            for content in contents {
+                guard case let .image(current) = content else {
+                    if let theTarget = target {
+                        result.append(.image(theTarget))
+                        target = nil
+                    }
+                    
+                    result.append(content)
                     continue
                 }
-                                
-                if index == nil {
-                    index = i
+                
+                guard let theTarget = target else {
+                    target = current
+                    continue
                 }
                 
-                if let theTarget = target {
-                    target = data.merged(theTarget)
+                if let merged = theTarget.merged(current) {
+                    target = merged
                 }
                 else {
-                    target = data
+                    result.append(.image(theTarget))
+                    target = current
                 }
             }
             
-            if let index, let target {
-                content.removeAll { $0.image != nil }
-                content.insert(.image(target), at: index)
+            if let target {
+                result.append(.image(target))
             }
+
+            return result
         }
     }
 }
 
 private extension String {
-    func makeImageID() -> String {
-        self + "-image"
+    func makeImageID(_ index: Int) -> String {
+        "\(self)_image\(index)"
     }
 }
-
 private extension Message {
     protocol ContentConcrete {
         func parse(_ input: [Message.Content]) throws -> [Message.Content]
@@ -131,13 +141,18 @@ private extension Message {
 private extension Message {
     struct ContentParser: ContentConcrete {
         let regex: NSRegularExpression
-        let data: (String) throws -> Message.Content
+        let data: ((index: Int, string: String)) throws -> Message.Content
         
         func parse(_ input: [Message.Content]) throws -> [Message.Content] {
             try StringParser(parse: parse(_:)).parse(input)
         }
-        
+
         func parse(_ input: Text) throws -> [Message.Content] {
+            var matched = false
+            return try parse(input, matched: &matched)
+        }
+        
+        func parse(_ input: Text, matched: inout Bool) throws -> [Message.Content] {
             let inputNS = input.text as NSString
             let matches = regex.matches(in: input.text,
                                         range: .init(location: 0, length: inputNS.length))
@@ -159,17 +174,20 @@ private extension Message {
                 
                 if rangeOfData.length > 0 {
                     do {
-                        result.append(try data(inputNS.substring(with: rangeOfData)))
+                        result.append(try data((index: rangeOfData.location,
+                                                string: inputNS.substring(with: rangeOfData))))
                     }
                     catch {
-                        // just skip this errors
+                        return [.text(input)]
                     }
                 }
                 
-                index = rangeOfFull.upperBound
+                index = rangeOfData.upperBound
             }
-            
-            if index == 0, result.isEmpty {
+
+            matched = !result.isEmpty
+
+            if result.isEmpty {
                 result.append(.text(input))
             }
             else if index < inputNS.length {
@@ -189,13 +207,11 @@ private extension Message {
             let prompt: String
         }
         
-        private let id: String
         private let regex: NSRegularExpression
 
-        init(id: String, tag: String) {
-            self.id = id
+        init(tag: String) {
             self.regex = try! NSRegularExpression(
-                pattern: #"\n*```\s*?"# + tag + #"\s*?(\{.+?\}).*?```\n*"#, options: [.dotMatchesLineSeparators])
+                pattern: #"\n*```\s*?"# + tag + #"\s*?(.*?)\s*?\n*"#, options: [.dotMatchesLineSeparators])
         }
 
         func parse(_ input: [Message.Content]) throws -> [Message.Content] {
@@ -203,9 +219,9 @@ private extension Message {
         }
 
         func parse(_ input: Text) throws -> [Message.Content] {
-            try ContentParser(regex: regex) {
-                let obj = try JSONDecoder().decodeX(dalle_text2im.self, from: .init(string: $0))
-                return .image(.init(id: id.makeImageID(),
+            try ContentParser(regex: regex) { arg in
+                let obj = try JSONDecoder().decodeX(dalle_text2im.self, from: .init(string: arg.string))
+                return .image(.init(id: "",
                                     size: obj.size.parsedSize,
                                     prompt: obj.prompt))
             }.parse(input)
@@ -220,14 +236,12 @@ private extension Message {
             let prompt: String
         }
         
-        private let id: String
         private let regex: NSRegularExpression
 
         private static let regexPrompt = try! NSRegularExpression(
             pattern: #""prompt"\s*:\s*"([^"\\]*(\\.[^"\\]*)*)"#, options: [.dotMatchesLineSeparators])
 
-        init(id: String, tag: String) {
-            self.id = id
+        init(tag: String) {
             self.regex = try! NSRegularExpression(
                 pattern: #"\s*```"# + tag + #"(.*)"#, options: [.dotMatchesLineSeparators])
         }
@@ -237,8 +251,8 @@ private extension Message {
         }
 
         func parse(_ input: Text) throws -> [Message.Content] {
-            return try ContentParser(regex: regex) {
-                parse(id: input.id.makeImageID(), prompt: $0)
+            return try ContentParser(regex: regex) { arg in
+                return parse(id: "", prompt: arg.string)
             }.parse(input)
         }
         
@@ -294,23 +308,17 @@ private extension Message {
     struct ContentImage: ContentConcrete {
         private static let regex = try! NSRegularExpression(
             pattern: #"\n*!\[image\]\s*\((.*?)\)\n*"#, options: [.dotMatchesLineSeparators])
-
-        private let id: String
-        
-        init(id: String) {
-            self.id = id
-        }
         
         func parse(_ input: [Message.Content]) throws -> [Message.Content] {
             try StringParser(parse: parse(_:)).parse(input)
         }
 
         func parse(_ input: Text) throws -> [Message.Content] {
-            try ContentParser(regex: Self.regex) {
-                guard let url = URL(string: $0) else {
+            try ContentParser(regex: Self.regex) { arg in
+                guard let url = URL(string: arg.string) else {
                     throw StringError("[dalle.text2im.image][\(self)] Bad url format")
                 }
-                return .image(.init(id: id.makeImageID(), url: url))
+                return .image(.init(id: "", url: url))
             }.parse(input)
         }
     }
@@ -320,14 +328,14 @@ private extension Message {
     struct ContentImage_partial: ContentConcrete {
         private static let regex = try! NSRegularExpression(
             pattern: #"(\n*!\[image\]\s*\([^\)]*?)$"#, options: [.dotMatchesLineSeparators])
-
+        
         func parse(_ input: [Message.Content]) throws -> [Message.Content] {
             try StringParser(parse: parse(_:)).parse(input)
         }
 
         func parse(_ input: Text) throws -> [Message.Content] {
-            try ContentParser(regex: Self.regex) {
-                .hidden($0)
+            try ContentParser(regex: Self.regex) { arg in
+                .hidden(.init(id: "", value: arg.string))
             }.parse(input)
         }
     }
@@ -335,17 +343,16 @@ private extension Message {
 
 private extension Message {
     struct ProgressParser: ContentConcrete {
-        private let id: String
-        
-        init(id: String) {
-            self.id = id
-        }
-        
         func parse(_ input: [Message.Content]) throws -> [Message.Content] {
             var result =  [Message.Content]()
             var progress: Float?
+            var imageID: String?
 
             for content in input {
+                if case let .image(image) = content {
+                    imageID = image.id
+                }
+                
                 if case let .text(data) = content {
                     var mutableString = data.text
                     
@@ -366,8 +373,8 @@ private extension Message {
                 }
             }
             
-            if let progress {
-                result.append(.image(.init(id: id.makeImageID(), progress: progress)))
+            if let progress, let imageID {
+                result.append(.image(.init(id: imageID, progress: progress)))
             }
             
             return result

@@ -5,13 +5,24 @@ import Combine
 import Utils9AIAdapter
 
 public extension Message {
-    enum Content: Identifiable {
+    enum Content: Identifiable, Hashable {
         case text(Text)
         case image(Image)
-        case hidden(String)
+        case hidden(IdentifiableContent<String>)
         case meta(Meta)
-        case composite([Message.Content])
-        case publisher(CurrentValueSubject<Message.Content, Never>)
+        case composite(IdentifiableContent<[Message.Content]>)
+        case publisher(IdentifiableContent<CurrentValueSubject<Message.Content, Never>>)
+    }
+}
+
+public extension Message {
+    struct IdentifiableContent<T: Hashable>: Identifiable, Hashable {
+        public let id: String
+        public let value: T
+        
+        func copy(id: String) -> Self {
+            .init(id: id, value: value)
+        }
     }
 }
 
@@ -24,11 +35,41 @@ public extension Message {
             self.id = id
             self.text = text
         }
+        
+        func copy(id: String) -> Self {
+            .init(id: id, text: text)
+        }
+    }
+}
+
+private extension Message.Image {
+    enum Part: Int, CaseIterable {
+        case meta
+        case progress
+        case url
+    }
+    
+    var parts: [Part] {
+        var result = [Part]()
+        
+        if size != nil || prompt != nil {
+            result.append(.meta)
+        }
+        
+        if url != nil {
+            result.append(.url)
+        }
+        
+        if progress != nil {
+            result.append(.progress)
+        }
+        
+        return result
     }
 }
 
 public extension Message {
-    struct Image: Hashable {
+    struct Image: Hashable, Identifiable {
         public let id: String
         public let size: CGSize?
         public let prompt: String?
@@ -65,27 +106,43 @@ public extension Message {
             return result
         }
         
-        func merged(_ src: Image) -> Image {
-            .init(id: id,
-                  size: size ?? src.size,
-                  prompt: prompt ?? src.prompt,
-                  url: url ?? src.url,
-                  progress: progress ?? src.progress)
+        func merged(_ src: Image) -> Image? {
+            let partsSum = parts + src.parts
+            
+            guard partsSum.count <= Part.allCases.count else {
+                return nil
+            }
+
+            guard partsSum.sorted { $0.rawValue < $1.rawValue } == partsSum else {
+                return nil
+            }
+
+            return .init(id: id,
+                         size: size ?? src.size,
+                         prompt: prompt ?? src.prompt,
+                         url: url ?? src.url,
+                         progress: progress ?? src.progress)
         }
         
         func copy(progress: Float?) -> Self {
+            .init(id: id, size: size, prompt: prompt, url: url, progress: progress)
+        }
+        
+        func copy(id: String) -> Self {
             .init(id: id, size: size, prompt: prompt, url: url, progress: progress)
         }
     }
 }
 
 public extension Message {
-    struct Meta: Hashable {
+    struct Meta: Hashable, Identifiable {
+        public let id: String
         public let conversationID: String
         public let targetMessageID: String
         public let providerID: String
 
-        public init(conversationID: String, targetMessageID: String, providerID: String) {
+        public init(id: String, conversationID: String, targetMessageID: String, providerID: String) {
+            self.id = id
             self.conversationID = conversationID
             self.providerID = providerID
             self.targetMessageID = targetMessageID
@@ -96,7 +153,8 @@ public extension Message {
                 return nil
             }
             
-            self.init(conversationID: conversation.ID,
+            self.init(id: "meta",
+                      conversationID: conversation.ID,
                       targetMessageID: conversation.targetMessageID,
                       providerID: src.provider)
         }
@@ -106,13 +164,22 @@ public extension Message {
                 return nil
             }
             
-            self.init(conversationID: conversation.ID,
+            self.init(id: "meta",
+                      conversationID: conversation.ID,
                       targetMessageID: conversation.targetMessageID,
                       providerID: provider)
         }
 
+        public func copy(id: String) -> Self {
+            .init(id: id,
+                  conversationID: conversationID,
+                  targetMessageID: targetMessageID,
+                  providerID: providerID)
+        }
+
         public func copy(targetMessageID: String) -> Self {
-            .init(conversationID: conversationID,
+            .init(id: "meta",
+                  conversationID: conversationID,
                   targetMessageID: targetMessageID,
                   providerID: providerID)
         }
@@ -126,7 +193,7 @@ extension ChatDTO.Conversation {
     }
 }
 
-extension Message.Content: Hashable {
+extension Message.Content: Equatable {
     public static func == (lhs: Message.Content, rhs: Message.Content) -> Bool {
         lhs.text == rhs.text
     }
@@ -151,19 +218,30 @@ extension Message.Content {
         case .hidden: "hidden"
         case .image(let data): data.id
         case .meta: "meta"
-        case .composite(let contents): contents.map(\.id).joined()
-        case .publisher(let publisher): publisher.value.id
+        case .composite(let data): data.id
+        case .publisher(let data): data.id
         }
     }
-    
+
+    public func setting(id: String) -> Self {
+        switch self {
+        case .text(let data): .text(data.copy(id: id))
+        case .hidden(let data): .hidden(data.copy(id: id))
+        case .image(let data): .image(data.copy(id: id))
+        case .meta(let data): .meta(data.copy(id: id))
+        case .composite(let data): .composite(data.copy(id: id))
+        case .publisher(let data): .publisher(data.copy(id: id))
+        }
+    }
+
     public var text: String {
         switch self {
         case .text(let data): data.text
         case .hidden: ""
         case .image(let data): data.stringRepresentation
         case .meta: ""
-        case .composite(let contents): contents.map(\.text).joined()
-        case .publisher(let publisher): publisher.value.text
+        case .composite(let data): data.value.map(\.text).joined()
+        case .publisher(let data): data.value.value.text
         }
     }
     
@@ -173,10 +251,10 @@ extension Message.Content {
             return data
         case .hidden, .image, .meta:
             return nil
-        case .composite(let contents):
-            return contents.lazy.compactMap { $0.textObject }.first
-        case .publisher(let publisher):
-            return publisher.value.textObject
+        case .composite(let data):
+            return data.value.lazy.compactMap { $0.textObject }.first
+        case .publisher(let data):
+            return data.value.value.textObject
         }
     }
 
@@ -186,8 +264,8 @@ extension Message.Content {
         case .hidden: Just(self).eraseToAnyPublisher()
         case .image: Just(self).eraseToAnyPublisher()
         case .meta: Just(self).eraseToAnyPublisher()
-        case .composite(let contents): Publishers.MergeMany(contents.map { $0.publisher }).eraseToAnyPublisher()
-        case .publisher(let publisher): publisher.eraseToAnyPublisher()
+        case .composite(let data): Publishers.MergeMany(data.value.map { $0.publisher }).eraseToAnyPublisher()
+        case .publisher(let data): data.value.eraseToAnyPublisher()
         }
     }
     
@@ -197,7 +275,7 @@ extension Message.Content {
         case .hidden: false
         case .image: false
         case .meta: false
-        case .composite(let contents): contents.reduce(false) { $0 || $1.mutable }
+        case .composite(let data): data.value.reduce(false) { $0 || $1.mutable }
         case .publisher: true
         }
     }
@@ -240,15 +318,15 @@ extension Message.Content {
             return result
         }
         
-        if case .composite(let array) = self {
-            for i in array {
+        if case .composite(let data) = self {
+            for i in data.value {
                 if let result = i.fetch(block) {
                     return result
                 }
             }
         }
         
-        if case .publisher(let publisher) = self, let result = publisher.value.fetch(block) {
+        if case .publisher(let data) = self, let result = data.value.value.fetch(block) {
             return result
         }
         

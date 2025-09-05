@@ -151,10 +151,10 @@ public extension Message {
             if let meta,
                let previousIntID = all.last?.id,
                let previousExtID = externalMessageID[previousIntID] {
-                content = .composite([
-                    content,
-                    .meta(meta.copy(targetMessageID: previousExtID))
-                ])
+                content = .composite(.init(id: "\(id)", value: [
+                    content.setting(id: "\(id)_0"),
+                    .meta(meta.copy(targetMessageID: previousExtID).copy(id: "\(id)_1"))
+                ]))
             }
             
             let kind = Message.Kind.question(content, preset)
@@ -195,7 +195,7 @@ public extension Message {
             case .answer(_ , let content):
                 all.remove(request)
                 
-                if let index = all.firstIndex { $0.id == request.viewModelID } {
+                if let index = all.firstIndex { $0.id == request.question.viewModelID } {
                     all.insert(.init(result), at: all.index(after: index))
                 }
                 else {

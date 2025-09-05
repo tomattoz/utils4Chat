@@ -86,6 +86,7 @@ private struct CachedAttributedText: View {
     let vm: Message.ViewModel
     let text: Message.Text
     @ObservedObject var cache: Message.TextCache
+    @State var timer: Timer?
 
     init(vm: Message.ViewModel, text: Message.Text) {
         self.vm = vm
@@ -102,8 +103,13 @@ private struct CachedAttributedText: View {
                 SwiftUI.Text(" ")
             }
         }
+        .onAppear {
+            timer?.invalidate()
+        }
         .onDisappear {
-            cache.invalidate()
+            timer = Timer.scheduledTimer(withTimeInterval: 7, repeats: false) { _ in
+                cache.reset()
+            }
         }
     }
 }

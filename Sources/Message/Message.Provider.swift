@@ -2,6 +2,7 @@
 
 import Foundation
 import Combine
+import NIOHTTP1
 import AsyncHTTPClient
 import Utils9AIAdapter
 import Utils9AsyncHttpClient
@@ -10,6 +11,7 @@ import Utils9
 
 public protocol MessageProvider {
     func request(ancestor: Message.Model, all: [Message.Model]) async -> Message.Kind
+    func download(message: Message.Model, image srcURL: URL, to dstURL: URL) async throws
 }
 
 public extension Message {
@@ -66,7 +68,7 @@ public extension Message.Provider {
         private let inner: HttpProvider
         private let user: StringVar
         private let email: StringVar
-
+        
         public init(plan: LockedVar<Payment.Plan>,
                     inner: HttpProvider,
                     presetTraits: Preset.Traits,
@@ -101,7 +103,7 @@ public extension Message.Provider {
                     value: [content.setting(id: "0_0"),
                             Message.Content.meta(meta.copy(id: "0_1"))]))
             }
-
+            
             _log(provider: dto.provider)
             return .answer(ancestor, content)
         }
@@ -120,12 +122,12 @@ public extension Message.Provider {
                 var meta: Message.Meta?
                 var bufferPrefix = ""
                 var lastError: Swift.Error?
-
+                
                 do {
                     for try await buffer in response.body {
                         guard buffer.readableBytes > 0 else { continue }
                         let bufferString = bufferPrefix + String(buffer: buffer)
-
+                        
                         bufferPrefix = ""
                         
                         bufferString
@@ -152,7 +154,7 @@ public extension Message.Provider {
                             }
                             .forEach {
                                 resultText += $0.message
-
+                                
                                 if let theMeta = Message.Meta($0) {
                                     meta = theMeta
                                 }
@@ -165,7 +167,7 @@ public extension Message.Provider {
                         await MainActor.run { [resultText, meta] in
                             var content = Message.Parser.shared.content(id: "0",
                                                                         text: resultText)
-                                                        
+                            
                             if let meta {
                                 content = .composite(.init(id: "0", value: [
                                     content.setting(id: "0_0"),
@@ -184,11 +186,11 @@ public extension Message.Provider {
                 catch {
                     // it will be logged in Message -> Room -> Answer
                 }
-
+                
                 if let provider {
                     _log(provider: provider)
                 }
-
+                
                 await MainActor.run {
                     result.send(completion: .finished)
                 }
@@ -196,7 +198,7 @@ public extension Message.Provider {
             
             return .answer(ancestor, .publisher(.init(id: "", value: result)))
         }
-
+        
         public func request(ancestor: Message.Model,
                             all: [Message.Model]) async -> Message.Kind {
             let question = ancestor.question
@@ -210,7 +212,7 @@ public extension Message.Provider {
                                        messages: messages,
                                        provider: meta?.providerID,
                                        conversation: .init(meta))
-
+            
             do {
                 return plan == .free || !presetTraits.canStream(preset)
                 ? try await requestWhole(ancestor: ancestor, preset: preset, messages: messages, data: data)
@@ -225,7 +227,50 @@ public extension Message.Provider {
                 return .failure(ancestor, error)
             }
         }
+        
+        public func download(message: Message.Model, image srcURL: URL, to dstURL: URL) async throws {
+            let preset = message.question.kind.presetOrDefault
+            let meta = message.question.content.meta
+            let data = FileDTO.Request(url: srcURL.absoluteString,
+                                       plan: plan,
+                                       preset: .init(preset),
+                                       providerID: meta?.providerID,
+                                       conversation: .init(meta))
+            let metaRequest = try inner.post(at: "ai/chat/download/headers", data: data)
+            let metaResponse: DownloadResponse = try await inner.objectUnchecked(metaRequest)
+            var dataRequest = HTTPClientRequest(url: srcURL.absoluteString)
+            
+            var headers = HTTPHeaders()
+            for (name, value) in metaResponse.headers {
+                headers.add(name: name, value: value)
+            }
+            dataRequest.headers = headers
+            
+            let dataResponse = try await HTTPClient.shared.execute(dataRequest, timeout: .seconds(60))
+            
+            // Ensure destination directory exists
+            let directoryURL = dstURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+            // Create or truncate the file
+            FileManager.default.createFile(atPath: dstURL.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: dstURL)
+            defer {
+                try? handle.close()
+            }
+
+            // Write chunks as they arrive
+            for try await part in dataResponse.body {
+                try handle.write(contentsOf: Data(buffer: part))
+            }
+            
+            try handle.synchronize()
+        }
     }
+}
+
+private struct DownloadResponse: Codable {
+    let headers: [String:String]
 }
 
 private extension Array where Element == Message.Model {

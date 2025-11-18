@@ -21,9 +21,13 @@ extension Message {
                 .parse(result) } ?? result
             result = tryLog { try DalleText2im(tag: "dalle\\.text2im")
                 .parse(result) } ?? result
+            result = tryLog { try DalleText2im(tag: "json")
+                .parse(result) } ?? result
             result = tryLog { try DalleText2im_partial(tag: "image_creator")
                 .parse(result) } ?? result
             result = tryLog { try DalleText2im_partial(tag: "dalle\\.text2im")
+                .parse(result) } ?? result
+            result = tryLog { try DalleText2im_partial(tag: "json")
                 .parse(result) } ?? result
             result = tryLog { try ProgressParser()
                 .parse(result) } ?? result

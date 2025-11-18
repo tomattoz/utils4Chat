@@ -23,7 +23,7 @@ extension Message.ImageStore {
 }
 
 public extension Message {
-    actor ImageStore {
+    actor ImageStore: ObservableObject {
         private enum Error: Swift.Error, LocalizedError {
             case notFound(String)
             case load(String)
@@ -36,13 +36,14 @@ public extension Message {
             }
         }
         
-        public static let shared = ImageStore()
         private let url: URL
         private var images: [String: Image] = [:]
         private var loading: [String: AnyPublisher<Image, Never>] = [:]
+        private let provider: MessageProvider
 
-        init(_ url: URL = .appData.appendingPathComponent("image")) {
+        public init(url: URL = .appData.appendingPathComponent("image"), provider: MessageProvider) {
             self.url = url
+            self.provider = provider
         }
         
         func image(remote url: URL) -> Image? {
@@ -59,7 +60,7 @@ public extension Message {
             url.deletingLastPathComponent().lastPathComponent
         }
 
-        func load(url: URL) -> AnyPublisher<Image, Never> {
+        func load(url: URL, for message: Message.Model) -> AnyPublisher<Image, Never> {
             let id = id(remote: url)
 
             if let publisher = loading[id] {
@@ -75,7 +76,7 @@ public extension Message {
                 }
             }
             else {
-                return load(remote: url)
+                return load(remote: url, for: message)
             }
         }
         
@@ -207,7 +208,7 @@ public extension Message {
             await publisher.complete(item)
         }
         
-        private func load(remote url: URL) -> AnyPublisher<Image, Never> {
+        private func load(remote url: URL, for message: Message.Model) -> AnyPublisher<Image, Never> {
             let id = id(remote: url)
             let result = PassthroughSubject<Image, Never>()
             let localURL = self.localURL(url)
@@ -219,9 +220,7 @@ public extension Message {
                     let folderURL = localURL.deletingLastPathComponent()
                     FileManager.default.tryCreateDirectoryIfNeeded(folderURL)
                     
-                    let localTmpURL = try await URLSession.shared.download(from: url).0
-                    
-                    try FileManager.default.moveItem(at: localTmpURL, to: localURL)
+                    try await provider.download(message: message, image: url, to: localURL)
                     await load(local: localURL, publisher: result)
                 }
                 catch {

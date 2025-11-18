@@ -13,12 +13,12 @@ private extension EdgeInsets {
 extension Message {
     struct ItemView: SwiftUI.View {
         let room: Message.Room
-        let vm: Message.ViewModel
+        @ObservedObject var vm: Message.ViewModel
         let builder: ContentBuilder
 
         init(room: Message.Room, message: Message.ViewModel, builder: ContentBuilder) {
             self.room = room
-            self.vm = message
+            _vm = .init(wrappedValue: message)
             self.builder = builder
         }
         

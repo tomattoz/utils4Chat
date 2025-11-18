@@ -25,12 +25,14 @@ extension Message {
         @Published var animateImageAppearance = false
         @Published var animateProgressAppearance = false
         let message: Message.Model
+        let store: Message.ImageStore
         private var loadingBag: AnyCancellable?
         private var bag = [AnyCancellable]()
 
-        init(message: Message.Model, data: Message.Image) {
+        init(store: Message.ImageStore, message: Message.Model, data: Message.Image) {
             self.message = message
             self.data = data
+            self.store = store
             
             message.content.publisher
                 .throttle(for: .seconds(0.5), scheduler: RunLoop.main, latest: true)
@@ -50,7 +52,7 @@ extension Message {
             
             if let url = data.url, item == nil {
                 Task{ @MainActor in
-                    loadingBag = await Message.ImageStore.shared.load(url: url).sink {
+                    loadingBag = await store.load(url: url, for: message).sink {
                         self.item = $0
                         self.loaded = loaded
                     }
@@ -59,7 +61,7 @@ extension Message {
 
             else if let url = data.url, item?.loaded != true {
                 Task{ @MainActor in
-                    let item = await Message.ImageStore.shared.image(remote: url)
+                    let item = await store.image(remote: url)
                     
                     if self.item?.loaded != true && item?.loaded == true {
                         self.item = item
@@ -80,8 +82,8 @@ extension Message {
         @State private var previewURL: URL?
         @State private var showSavePanel = false
         
-        init(message: Message.Model, data: Message.Image) {
-            _vm = .init(wrappedValue: .init(message: message, data: data))
+        init(store: ImageStore, message: Message.Model, data: Message.Image) {
+            _vm = .init(wrappedValue: .init(store: store, message: message, data: data))
         }
         
         var body: some View {

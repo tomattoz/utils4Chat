@@ -188,20 +188,20 @@ public extension Message {
 
         @discardableResult public func answer(to request: Message.Model,
                                               response: Message.Kind) -> Message.Model? {
-            let result = Message.Model(id: identifier.pop(), kind: response)
             let question = request.question
+            let result: Message.Model
             
             switch response {
             case .answer(_ , let content):
-                all.remove(request)
-                
-                if let index = all.firstIndex { $0.id == request.question.viewModelID } {
-                    all.insert(.init(result), at: all.index(after: index))
+                result = .init(id: request.id, kind: response)
+
+                if let first = all.first { $0.id == request.id } {
+                    first.message = result
                 }
                 else {
                     all.append(.init(result))
                 }
-                                
+                
                 content.publisher.sink { _ in
                     if content.image != nil {
                         log(event: "answer_image")
@@ -220,15 +220,17 @@ public extension Message {
                 delegate.didReceive(self, answer: result, content: content)
            
             case .failure(_ , let error):
+                result = .init(id: request.question.id, kind: .failure(request.question, error))
+                all.remove(request)
                 all.replace(src: request.question, dst: result)
                 log(error)
                 log(event: "failure", parameters: ["error": error.localizedDescription])
                 
             case .question, .sending:
                 assertionFailure()
-                break;
+                return nil
             }
-                        
+            
             result.save(in: dbo, bag: &bag)
             return result
         }

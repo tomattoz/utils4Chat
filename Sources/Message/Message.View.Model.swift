@@ -6,7 +6,12 @@ import Combine
 public extension Message {
     class ViewModel: ObservableObject, Identifiable {
         public let id: UInt
-        @Published public var message: Model
+        @Published public var message: Model {
+            didSet {
+                registerPublishers()
+                updateContents()
+            }
+        }
         @Published public private(set) var contents = [Content]()
         private(set) var cache: TextCacheStore
         private var contentBag = [AnyCancellable]()
@@ -51,6 +56,8 @@ public extension Message {
         }
         
         private func registerPublishers() {
+            contentBag.removeAll()
+            
             message.content.publisher
                 .dropFirst()
                 .throttle(for: .seconds(0.5), scheduler: RunLoop.main, latest: true)

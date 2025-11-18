@@ -28,6 +28,7 @@ extension Message {
 public extension Message {
     struct ContentView: View {
         @ObservedObject var vm: Message.ViewModel
+        @EnvironmentObject var imageStore: ImageStore
         let builder: Message.ContentBuilder
         
         public init(vm: Message.ViewModel, builder: Message.ContentBuilder) {
@@ -48,7 +49,7 @@ public extension Message {
                         
                     case .image(let data):
                         HContainer(vm.message.kind) {
-                            Message.ImageView(message: vm.message, data: data)
+                            Message.ImageView(store: imageStore, message: vm.message, data: data)
                         }
                         
                     case .hidden, .meta, .composite, .publisher:

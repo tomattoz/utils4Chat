@@ -26,10 +26,10 @@ public extension Message.Provider {
 public extension Message.Provider {
     @MainActor static let preview: Message.Provider.Proto = Message.Provider.General(
         plan: .init(.free),
-        inner: HttpProviderImpl(url: String.makeVar {""}, salt: ""),
+        inner: HttpProviderImpl(url: BoxedVar(""), salt: ""),
         presetTraits: Preset.TraitsImpl.shared,
-        user: String.emptyVar,
-        email: String.emptyVar)
+        user: BoxedVar(""),
+        email: BoxedVar(""))
 }
 #endif
 
@@ -64,21 +64,21 @@ public extension MessageProvider {
 public extension Message.Provider {
     class General: Message.Provider.Proto {
         @LockedVar private var plan: Payment.Plan
+        @BoxedVar private var user: String
+        @BoxedVar private var email: String
         private let presetTraits: Preset.Traits
         private let inner: HttpProvider
-        private let user: StringVar
-        private let email: StringVar
         
         public init(plan: LockedVar<Payment.Plan>,
                     inner: HttpProvider,
                     presetTraits: Preset.Traits,
-                    user: StringVar,
-                    email: StringVar) {
-            _plan = plan
+                    user: BoxedVar<String>,
+                    email: BoxedVar<String>) {
+            self._plan = plan
+            self._user = user
+            self._email = email
             self.presetTraits = presetTraits
             self.inner = inner
-            self.user = user
-            self.email = email
         }
         
         private func _log(provider: String) {
@@ -205,8 +205,8 @@ public extension Message.Provider {
             let preset = question.kind.presetOrDefault
             let messages = all.precedingWithMessage(to: question)
             let meta = question.content.meta
-            let data = ChatDTO.Request(user: user.value,
-                                       email: !email.value.isEmpty ? email.value : nil,
+            let data = ChatDTO.Request(user: user,
+                                       email: !email.isEmpty ? email : nil,
                                        plan: plan,
                                        preset: .init(preset),
                                        messages: messages,

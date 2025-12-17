@@ -17,7 +17,7 @@ public extension Preset {
 
 public extension Preset {
     class TraitsInternal: Traits {
-        public static let shared: Preset.Traits = Preset.TraitsImpl()
+        public static let shared: Preset.Traits = Preset.TraitsInternal()
         public func canStream(_ preset: Model) -> Bool { false }
     }
 }

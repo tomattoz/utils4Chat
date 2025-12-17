@@ -26,10 +26,10 @@ public extension Message.Provider {
 public extension Message.Provider {
     @MainActor static let preview: Message.Provider.Proto = Message.Provider.General(
         plan: .init(.free),
-        inner: HttpProviderImpl(url: BoxedVar(""), salt: ""),
+        inner: HttpProviderImpl(url: .init(const: ""), salt: ""),
         presetTraits: Preset.TraitsImpl.shared,
-        user: BoxedVar(""),
-        email: BoxedVar(""))
+        user: .init(const: ""),
+        email: .init(const: ""))
 }
 #endif
 
@@ -64,16 +64,16 @@ public extension MessageProvider {
 public extension Message.Provider {
     class General: Message.Provider.Proto {
         @LockedVar private var plan: Payment.Plan
-        @BoxedVar private var user: String
-        @BoxedVar private var email: String
+        @AnyVar private var user: String
+        @AnyVar private var email: String
         private let presetTraits: Preset.Traits
         private let inner: HttpProvider
         
         public init(plan: LockedVar<Payment.Plan>,
                     inner: HttpProvider,
                     presetTraits: Preset.Traits,
-                    user: BoxedVar<String>,
-                    email: BoxedVar<String>) {
+                    user: AnyVar<String>,
+                    email: AnyVar<String>) {
             self._plan = plan
             self._user = user
             self._email = email
@@ -214,7 +214,7 @@ public extension Message.Provider {
                                        conversation: .init(meta))
             
             do {
-                return plan == .free || !presetTraits.canStream(preset)
+                return !presetTraits.canStream(preset)
                 ? try await requestWhole(ancestor: ancestor, preset: preset, messages: messages, data: data)
                 : try await requestStream(ancestor: ancestor, preset: preset, messages: messages, data: data)
             }

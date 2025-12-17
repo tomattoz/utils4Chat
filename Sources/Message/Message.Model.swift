@@ -76,7 +76,7 @@ extension Message.Model {
         switch kind {
         case .question: id
         case .failure(let question, _): question.id
-        case .sending(let question): id
+        case .sending: id
         case .answer: id
         }
     }

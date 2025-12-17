@@ -39,7 +39,7 @@ extension Message {
             self.generation += 1
             let generation = self.generation
             
-            DispatchQueue.global(priority: .high).async {
+            DispatchQueue.global(qos: .userInitiated).async {
                 for content in contents {
                     if let textObject = content.textObject {
                         self.update(textObject, generation: generation)

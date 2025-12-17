@@ -44,7 +44,6 @@ public extension Message {
         }
         
         private func updateContents() {
-            var bag = [AnyCancellable]()
             var result = [Message.Content]()
             
             updateContents(content: message.content, result: &result)
@@ -69,7 +68,7 @@ public extension Message {
         
         private func updateContents(content: Message.Content, result: inout [Message.Content]) {
             switch content {
-            case .text(let data):
+            case .text:
                 result.append(content)
             case .image:
                 result.append(content)

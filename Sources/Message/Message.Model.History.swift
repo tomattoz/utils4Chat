@@ -53,7 +53,7 @@ public extension Message {
                 self.lastFilter = filter
                 
                 guard
-                    let index = history.firstIndex { $0.id == message.viewModelID },
+                    let index = (history.firstIndex { $0.id == message.viewModelID }),
                     let last = history.last
                 else { return }
                 

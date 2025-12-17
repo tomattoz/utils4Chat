@@ -28,14 +28,14 @@ extension Message {
                 case .question, .failure:
                     QuestionView(vm: vm, room: room, builder: builder)
                     
-                case .answer(let ancestor, let content):
+                case .answer:
                     PrecachedText(vm: vm, insets: .answer) {
                         VStack {
                             self.builder.view(vm: vm, builder: builder)
                         }
                     }
                     
-                case .sending(let ancestor):
+                case .sending:
                     HContainer(kind: vm.message.kind) {
                         Sending()
                     }
@@ -205,7 +205,7 @@ private extension Message {
             }
             .id(vm.id)
             .task {
-                vm.startCaching()
+                _ = vm.startCaching()
             }
             .onDisappear {
                 vm.stopCaching()

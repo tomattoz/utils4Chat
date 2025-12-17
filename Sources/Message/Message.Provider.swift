@@ -6,7 +6,6 @@ import NIOHTTP1
 import AsyncHTTPClient
 import Utils9AIAdapter
 import Utils9AsyncHttpClient
-import Utils9Chat
 import Utils9
 
 public protocol MessageProvider {

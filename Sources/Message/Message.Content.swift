@@ -113,7 +113,7 @@ public extension Message {
                 return nil
             }
 
-            guard partsSum.sorted { $0.rawValue < $1.rawValue } == partsSum else {
+            guard (partsSum.sorted { $0.rawValue < $1.rawValue }) == partsSum else {
                 return nil
             }
 

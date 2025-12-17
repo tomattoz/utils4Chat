@@ -66,12 +66,12 @@ public extension Message {
 #if DEBUG
 public extension Message.Store {
     static let identification = Message.Identification()
-    static let preview = Message.Store(presets: .preview,
-                                       provider: Message.Provider.preview,
-                                       internalProvider: Message.Provider.preview,
-                                       roomDelegate: Message.Room.DelegateStub(),
-                                       identification: identification,
-                                       room: .preview(identification))
+    @MainActor static let preview = Message.Store(presets: .preview,
+                                                  provider: Message.Provider.preview,
+                                                  internalProvider: Message.Provider.preview,
+                                                  roomDelegate: Message.Room.DelegateStub(),
+                                                  identification: identification,
+                                                  room: .preview(identification))
 }
 #endif
 

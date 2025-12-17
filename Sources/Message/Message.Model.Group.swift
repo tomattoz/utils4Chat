@@ -53,10 +53,10 @@ public extension Message {
         }
 
         #if DEBUG
-        public init(identifier: Message.Identification,
-                    presets: Preset.Store,
-                    delegate: Delegate,
-                    messages: [Message.Model] = []) {
+        @MainActor public init(identifier: Message.Identification,
+                               presets: Preset.Store,
+                               delegate: Delegate,
+                               messages: [Message.Model] = []) {
             self.identifier =  identifier
             self.provider = Message.Provider.preview
             self.presets = presets
@@ -169,7 +169,7 @@ public extension Message {
         @discardableResult private func append(sending question: Message.Model) -> Message.Model {
             let result = Message.Model(id: identifier.pop(), kind: .sending(question))
 
-            if let index = all.firstIndex { $0.id == question.viewModelID } {
+            if let index = (all.firstIndex { $0.id == question.viewModelID }) {
                 all.insert(.init(result), at: all.index(after: index))
             }
             else {
@@ -188,14 +188,13 @@ public extension Message {
 
         @discardableResult public func answer(to request: Message.Model,
                                               response: Message.Kind) -> Message.Model? {
-            let question = request.question
             let result: Message.Model
             
             switch response {
             case .answer(_ , let content):
                 result = .init(id: request.id, kind: response)
 
-                if let first = all.first { $0.id == request.id } {
+                if let first = (all.first { $0.id == request.id }) {
                     first.message = result
                 }
                 else {
@@ -342,7 +341,7 @@ public extension UserDefaults {
 
 extension Message.Room {
     #if DEBUG
-    static func preview(_ identifier: Message.Identification) -> Message.Room {
+    @MainActor static func preview(_ identifier: Message.Identification) -> Message.Room {
         let question1 = Message.Model(
             id: identifier.pop(),
             kind: .question(.text(.init(id: UUID().uuidString, text: "Hello")), .chatGPT))

@@ -8,7 +8,7 @@ extension Preset.Model {
     
     public static let chatGPT = Preset.Model(
         id: "sys_chatGPT",
-        name: "ChatGPT",
+        name: "General",
         icon: .chatGPT,
         instructions: .chatGPT)
 }
@@ -25,7 +25,8 @@ public extension Preset {
         public let iconVariants: [Icon]
         public let instructions: Instructions
 
-        public init(id: String, name: String,
+        public init(id: String,
+                    name: String,
                     icon: Preset.Icon,
                     iconVariants: [Preset.Icon] = [],
                     instructions: Preset.Instructions) {
@@ -39,6 +40,10 @@ public extension Preset {
 }
 
 public extension Preset.Model {
+    func copy(name: String) -> Self {
+        .init(id: id, name: name, icon: icon, iconVariants: iconVariants, instructions: instructions)
+    }
+    
     func iconAndVariants(_ original: Preset.Icon) -> [Preset.Icon] {
         let containsOriginal = iconVariants.contains { $0 == original }
         let containsChatGPT = iconVariants.contains { $0 == .chatGPT }

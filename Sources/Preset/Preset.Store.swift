@@ -83,8 +83,12 @@ public extension Preset {
                     libraryWildcard = true
                 }
                 
-                favourites = presetsDBO.mappedToModel(favouritesIDs, wildcard: false)
-                library = presetsDBO.mappedToModel(libraryIDs, wildcard: libraryWildcard)
+                favourites = presetsDBO
+                    .mappedToModel(favouritesIDs, wildcard: false)
+                    .fixed()
+                library = presetsDBO
+                    .mappedToModel(libraryIDs, wildcard: libraryWildcard)
+                    .fixed()
 
                 if libraryWildcard {
                     library = library.filter { libraryItem in
@@ -182,6 +186,19 @@ private extension UserDefaults {
         }
         set {
             setValue(String(newValue.joined(separator: ",")), forKey: "library")
+        }
+    }
+}
+
+private extension Array where Element == Preset.Model {
+    func fixed() -> Self {
+        map {
+            if $0.id == Preset.Model.chatGPT.id {
+                $0.copy(name: Preset.Model.chatGPT.name)
+            }
+            else {
+                $0
+            }
         }
     }
 }

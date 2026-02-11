@@ -25,7 +25,7 @@ public extension Message.Provider {
 public extension Message.Provider {
     @MainActor static let preview: Message.Provider.Proto = Message.Provider.General(
         plan: .init(.free),
-        inner: HttpProviderImpl(url: .init(const: ""), salt: ""),
+        inner: HTTPProviderStub(),
         presetTraits: Preset.TraitsImpl.shared,
         user: .init(const: ""),
         email: .init(const: ""))
@@ -66,10 +66,10 @@ public extension Message.Provider {
         @AnyVar private var user: String
         @AnyVar private var email: String
         private let presetTraits: Preset.Traits
-        private let inner: HttpProvider
+        private let inner: HTTPProvider
         
         public init(plan: LockedVar<Payment.Plan>,
-                    inner: HttpProvider,
+                    inner: HTTPProvider,
                     presetTraits: Preset.Traits,
                     user: AnyVar<String>,
                     email: AnyVar<String>) {
@@ -79,20 +79,14 @@ public extension Message.Provider {
             self.presetTraits = presetTraits
             self.inner = inner
         }
-        
-        private func _log(provider: String) {
-            let provider = provider.replacingOccurrences(of: "openai_web_", with: "")
-            log(event: "provider_\(provider)")
-        }
-        
+                
         private func requestWhole(ancestor: Message.Model,
                                   preset: Preset.Model,
                                   messages: [ChatDTO.Message],
                                   data: ChatDTO.Request) async throws -> Message.Kind {
             let request = try inner.post(at: "ai/chat", data: data)
-            let response = try await inner.execute(request)
-            let result = try await response.body.collect(upTo: .max)
-            let dto = try JSONDecoder().decodeX(ChatDTO.Response.self, from: result)
+            let response = try await inner.data(request)
+            let dto = try JSONDecoder().decodeX(ChatDTO.Response.self, from: response.data)
             var content = Message.Parser.shared.content(id: dto.message.sha256short,
                                                         text: dto.message)
             
@@ -112,87 +106,13 @@ public extension Message.Provider {
                                    messages: [ChatDTO.Message],
                                    data: ChatDTO.Request) async throws -> Message.Kind {
             let request = try inner.post(at: "ai/chat/stream", data: data)
-            let response = try await inner.execute(request)
+            let response = try await inner.stream(request)
             let result = CurrentValueSubject<Message.Content, Never>(.text(.init(id: "", text: "")))
-            var provider: String?
+            let stringStream = AsyncThrowingStream<String, Swift.Error>(response.stream)
+            let reader = StreamReader(input: stringStream, output: result)
             
             Task {
-                var resultText = ""
-                var meta: Message.Meta?
-                var bufferPrefix = ""
-                var lastError: Swift.Error?
-                
-                do {
-                    for try await buffer in response.body {
-                        guard buffer.readableBytes > 0 else { continue }
-                        let bufferString = bufferPrefix + String(buffer: buffer)
-                        
-                        bufferPrefix = ""
-                        
-                        bufferString
-                            .components(separatedBy: ChatDTO.PartialResponse.header)
-                            .filter { $0.count > 0 }
-                            .compactMap { string in
-                                if let data = string.data(using: .utf8) {
-                                    return (string: string, data: data)
-                                }
-                                else {
-                                    return nil
-                                }
-                            }
-                            .compactMap { tuple in
-                                do {
-                                    return try JSONDecoder().decodeX(ChatDTO.PartialResponse.self,
-                                                                     from: tuple.data)
-                                }
-                                catch {
-                                    bufferPrefix = tuple.string
-                                    lastError = error
-                                    return nil
-                                }
-                            }
-                            .forEach {
-                                resultText += $0.message
-                                
-                                if let theMeta = Message.Meta($0) {
-                                    meta = theMeta
-                                }
-                                
-                                if let theProvider = $0.provider {
-                                    provider = theProvider
-                                }
-                            }
-                        
-                        await MainActor.run { [resultText, meta] in
-                            var content = Message.Parser.shared.content(id: "0",
-                                                                        text: resultText)
-                            
-                            if let meta {
-                                content = .composite(.init(id: "0", value: [
-                                    content.setting(id: "0_0"),
-                                    .meta(meta.copy(id: "0_1"))
-                                ]))
-                            }
-                            
-                            result.send(content)
-                        }
-                    }
-                    
-                    if let lastError, !bufferPrefix.isEmpty {
-                        Utils9.log(lastError)
-                    }
-                }
-                catch {
-                    // it will be logged in Message -> Room -> Answer
-                }
-                
-                if let provider {
-                    _log(provider: provider)
-                }
-                
-                await MainActor.run {
-                    result.send(completion: .finished)
-                }
+                await reader.read()
             }
             
             return .answer(ancestor, .publisher(.init(id: "", value: result)))
@@ -304,6 +224,11 @@ private extension Array where Element == Message.Model {
     }
 }
 
+private func _log(provider: String) {
+    let provider = provider.replacingOccurrences(of: "openai_web_", with: "")
+    log(event: "provider_\(provider)")
+}
+
 private extension Message.Provider {
     enum Error: LocalizedError {
         case noMessages
@@ -328,5 +253,99 @@ private extension Message.Kind {
 
     var instruction: String {
         preset?.instructions.text ?? ""
+    }
+}
+
+private actor StreamReader {
+    private let input: AsyncThrowingStream<String, Error>
+    private let output: CurrentValueSubject<Message.Content, Never>
+    
+    private var resultText = ""
+    private var meta: Message.Meta?
+    private var bufferPrefix = ""
+    private var lastError: Swift.Error?
+    private var provider: String?
+
+    init(input: AsyncThrowingStream<String, Error>,
+         output: CurrentValueSubject<Message.Content, Never>) {
+        self.input = input
+        self.output = output
+    }
+    
+    func process(_ string: String) async {
+        let bufferString = bufferPrefix + string
+        
+        bufferPrefix = ""
+        
+        bufferString
+            .components(separatedBy: ChatDTO.PartialResponse.header)
+            .filter { $0.count > 0 }
+            .compactMap { string in
+                if let data = string.data(using: .utf8) {
+                    return (string: string, data: data)
+                }
+                else {
+                    return nil
+                }
+            }
+            .compactMap { tuple in
+                do {
+                    return try JSONDecoder().decodeX(ChatDTO.PartialResponse.self,
+                                                     from: tuple.data)
+                }
+                catch {
+                    bufferPrefix += tuple.string
+                    lastError = error
+                    return nil
+                }
+            }
+            .forEach {
+                resultText += $0.message
+                
+                if let theMeta = Message.Meta($0) {
+                    meta = theMeta
+                }
+                
+                if let theProvider = $0.provider {
+                    provider = theProvider
+                }
+            }
+        
+        await MainActor.run { [resultText, meta] in
+            var content = Message.Parser.shared.content(id: "0",
+                                                        text: resultText)
+            
+            if let meta {
+                content = .composite(.init(id: "0", value: [
+                    content.setting(id: "0_0"),
+                    .meta(meta.copy(id: "0_1"))
+                ]))
+            }
+            
+            output.send(content)
+        }
+    }
+    
+    func read() async {
+        do {
+            for try await string in input {
+                await process(string)
+            }
+            
+            if let lastError, !bufferPrefix.isEmpty {
+                Utils9.log(lastError)
+            }
+        }
+        catch {
+            // it will be logged in Message -> Room -> Answer
+        }
+        
+        if let provider {
+            _log(provider: provider)
+        }
+        
+        await MainActor.run {
+            output.send(completion: .finished)
+        }
     }
 }

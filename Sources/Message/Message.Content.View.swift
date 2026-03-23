@@ -3,7 +3,7 @@
 import SwiftUI
 import Parsley
 import Combine
-import Utils9Client
+import Utils9UI
 import Utils9
 
 private extension String {

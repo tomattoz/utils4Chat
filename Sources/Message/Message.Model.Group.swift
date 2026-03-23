@@ -48,8 +48,11 @@ public extension Message {
             self.delegate = delegate
             all = []
 
-            dbo = RoomDBO.open(in: DataBase.shared.context)
-            DataBase.shared.context.saveIfNeeded()
+            dbo = DataBase.shared.context.performAndWait {
+                let dbo = RoomDBO.open(in: DataBase.shared.context)
+                DataBase.shared.context.saveIfNeeded()
+                return dbo
+            }
         }
 
         #if DEBUG
@@ -63,8 +66,11 @@ public extension Message {
             self.delegate = delegate
             all = messages.map { .init($0) }
 
-            dbo = RoomDBO.open(in: DataBase.shared.context)
-            DataBase.shared.context.saveIfNeeded()
+            dbo = DataBase.shared.context.performAndWait {
+                let dbo = RoomDBO.open(in: DataBase.shared.context)
+                DataBase.shared.context.saveIfNeeded()
+                return dbo
+            }
         }
         #endif
         
@@ -73,8 +79,10 @@ public extension Message {
         }
         
         func close() {
-            dbo.close()
-            DataBase.shared.context.saveIfNeeded()
+            DataBase.shared.context.performAndWait {
+                dbo.close()
+                DataBase.shared.context.saveIfNeeded()
+            }
         }
         
         public func clearConversation() {
@@ -242,9 +250,11 @@ public extension Message {
                 tryLog {
                     self.externalMessageID[model.id] = meta.targetMessageID
                   
-                    if try MessageDBO.first(model)?.apply(meta.targetMessageID) == true ||
-                        dbo.apply(meta.conversationID) {
-                        DataBase.shared.context.saveIfNeeded()
+                    try DataBase.shared.context.performAndWait {
+                        if try MessageDBO.first(model)?.apply(meta.targetMessageID) == true ||
+                            dbo.apply(meta.conversationID) {
+                            DataBase.shared.context.saveIfNeeded()
+                        }
                     }
                 }
             }

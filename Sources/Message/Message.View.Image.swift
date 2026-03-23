@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Combine
 import QuickLook
-import Utils9Client
+import Utils9UI
 import Utils9
 
 private enum ImageError: Error, LocalizedError {

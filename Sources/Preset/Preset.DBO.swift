@@ -23,25 +23,33 @@ extension Preset.Model {
         fetchRequest.predicate = NSPredicate(format: "presetID == %@", self.id)
         
         return tryLog {
-            try DataBase.shared.context.fetch(fetchRequest).first
+            try DataBase.shared.context.performAndWait {
+                try DataBase.shared.context.fetch(fetchRequest).first
+            }
         }
     }
 
     public func create(_ moc: NSManagedObjectContext) {
-        _ = PresetDBO(context: DataBase.shared.context, src: self)
-        moc.saveIfNeeded()
+        DataBase.shared.context.performAndWait {
+            _ = PresetDBO(context: DataBase.shared.context, src: self)
+            moc.saveIfNeeded()
+        }
     }
     
     public func write(_ moc: NSManagedObjectContext) {
-        guard let managedObject else { return }
-        managedObject.apply(self)
-        moc.saveIfNeeded()
+        DataBase.shared.context.performAndWait {
+            guard let managedObject else { return }
+            managedObject.apply(self)
+            moc.saveIfNeeded()
+        }
     }
     
     public func delete(_ moc: NSManagedObjectContext) {
-        guard let managedObject else { return }
-        moc.delete(managedObject)
-        moc.saveIfNeeded()
+        DataBase.shared.context.performAndWait {
+            guard let managedObject else { return }
+            moc.delete(managedObject)
+            moc.saveIfNeeded()
+        }
     }
 }
 

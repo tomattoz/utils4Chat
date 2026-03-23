@@ -52,17 +52,19 @@ extension Message.Model {
     }
 
     func save(in room: RoomDBO, bag: inout Set<AnyCancellable>) {
-        tryLog {
-            var messageDBO = try MessageDBO.first(self)
-
-            if messageDBO == nil {
-                messageDBO = .init(context: DataBase.shared.context)
-                messageDBO?.index = Int64(self.id)
+        DataBase.shared.context.performAndWait {
+            tryLog {
+                var messageDBO = try MessageDBO.first(self)
+                
+                if messageDBO == nil {
+                    messageDBO = .init(context: DataBase.shared.context)
+                    messageDBO?.index = Int64(self.id)
+                }
+                
+                _ = messageDBO?.apply(self, bag: &bag)
+                messageDBO?.question?.room = room
+                try DataBase.shared.context.save()
             }
-
-            _ = messageDBO?.apply(self, bag: &bag)
-            messageDBO?.question?.room = room
-            try DataBase.shared.context.save()
         }
     }
 }

@@ -3,7 +3,7 @@
 import SwiftUI
 import SwiftUIIntrospect
 import Combine
-import Utils9Client
+import Utils9UI
 
 private extension Int {
     static let showScrollToTopMessagesCount = 100

@@ -23,7 +23,7 @@ let package = Package(
                     .product(name: "Utils9", package: "utils"),
                     .product(name: "Utils9AIAdapter", package: "utils4AdapterAI"),
                     .product(name: "Utils9AsyncHttpClient", package: "utils4AsyncHttpClient"),
-                    .product(name: "Utils9Client", package: "utils4Client"),
+                    .product(name: "Utils9UI", package: "utils4Client"),
                     .product(name: "SwiftUIIntrospect", package: "SwiftUI-Introspect"),
                     .product(name: "Parsley", package: "Parsley"),
                 ],

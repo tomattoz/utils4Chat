@@ -4,7 +4,7 @@ import Foundation
 import Combine
 import Utils9AIAdapter
 import Utils9
-import Utils9Client
+import Utils9UI
 
 extension String {
     static let aispotImage = "AI Spot image"

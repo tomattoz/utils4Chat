@@ -101,28 +101,32 @@ public extension Message {
 
 private extension MessageDBO {
     static func history(filter: String = "") -> [Message.Model] {
-        tryLog {
-            try MessageDBO
-                .last(count: .blockSize, filter: filter)
-                .compactMap { .init($0) }
-        } ?? []
+        DataBase.shared.context.performAndWait {
+            tryLog {
+                try MessageDBO
+                    .last(count: .blockSize, filter: filter)
+                    .compactMap { .init($0) }
+            } ?? []
+        }
     }
 
     static func prev(index: Int, count: Int, filter: String) -> [MessageDBO] {
         guard count > 0 else { return [] }
-
-        return tryLog {
-            let request = MessageDBO.fetchRequest()
-            request.fetchLimit = count
-            request.sortDescriptors = [.init(keyPath: \MessageDBO.index, ascending: false)]
-            request.predicate = filter.isEmpty
-            ? NSPredicate(format: "index < \(index)")
-            : NSPredicate(format:
+        
+        return DataBase.shared.context.performAndWait {
+            tryLog {
+                let request = MessageDBO.fetchRequest()
+                request.fetchLimit = count
+                request.sortDescriptors = [.init(keyPath: \MessageDBO.index, ascending: false)]
+                request.predicate = filter.isEmpty
+                ? NSPredicate(format: "index < \(index)")
+                : NSPredicate(format:
             """
             index < %ld AND (question.text CONTAINS[cd] %@ OR answer.text CONTAINS[cd] %@)
             """, index, filter, filter)
-            return try DataBase.shared.context.fetch(request)
-        } ?? []
+                return try DataBase.shared.context.fetch(request)
+            } ?? []
+        }
     }
 }
 

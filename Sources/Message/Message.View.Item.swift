@@ -2,7 +2,7 @@
 
 import SwiftUI
 import Combine
-import Utils9Client
+import Utils9UI
 import Utils9
 
 private extension EdgeInsets {

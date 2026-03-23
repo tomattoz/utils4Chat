@@ -67,48 +67,50 @@ public extension Preset {
         }
 
         @discardableResult public func loadOrSetup() -> Self {
-            let presetsDBO = PresetDBO.loadAll(DataBase.shared.context)
-
-            if presetsDBO.count > 0 {
-                var favouritesIDs = UserDefaults.standard.favourites
-                var libraryIDs = UserDefaults.standard.library
-                var libraryWildcard = false
+            DataBase.shared.context.performAndWait {
+                let presetsDBO = PresetDBO.loadAll(DataBase.shared.context)
                 
-                if favouritesIDs.isEmpty {
-                    favouritesIDs = defaults.favourites.map { $0.id }
-                }
-                
-                if libraryIDs.isEmpty {
-                    libraryIDs = defaults.library.map { $0.id }
-                    libraryWildcard = true
-                }
-                
-                favourites = presetsDBO
-                    .mappedToModel(favouritesIDs, wildcard: false)
-                    .fixed()
-                library = presetsDBO
-                    .mappedToModel(libraryIDs, wildcard: libraryWildcard)
-                    .fixed()
-
-                if libraryWildcard {
-                    library = library.filter { libraryItem in
-                        !favourites.contains(where: { $0.id == libraryItem.id })
+                if presetsDBO.count > 0 {
+                    var favouritesIDs = UserDefaults.standard.favourites
+                    var libraryIDs = UserDefaults.standard.library
+                    var libraryWildcard = false
+                    
+                    if favouritesIDs.isEmpty {
+                        favouritesIDs = defaults.favourites.map { $0.id }
                     }
+                    
+                    if libraryIDs.isEmpty {
+                        libraryIDs = defaults.library.map { $0.id }
+                        libraryWildcard = true
+                    }
+                    
+                    favourites = presetsDBO
+                        .mappedToModel(favouritesIDs, wildcard: false)
+                        .fixed()
+                    library = presetsDBO
+                        .mappedToModel(libraryIDs, wildcard: libraryWildcard)
+                        .fixed()
+                    
+                    if libraryWildcard {
+                        library = library.filter { libraryItem in
+                            !favourites.contains(where: { $0.id == libraryItem.id })
+                        }
+                    }
+                    
+                    self.newFavourites = defaults.favourites
+                        .filter { defaults.newFavourites.contains($0) }
+                        .filter { favourite in !presetsDBO.contains { $0.presetID == favourite.id } }
                 }
-                
-                self.newFavourites = defaults.favourites
-                    .filter { defaults.newFavourites.contains($0) }
-                    .filter { favourite in !presetsDBO.contains { $0.presetID == favourite.id } }
+                else {
+                    favourites = defaults.favourites
+                    library = defaults.library
+                    
+                    _ = favourites.mappedToDBO()
+                    _ = library.mappedToDBO()
+                    DataBase.shared.context.saveIfNeeded()
+                }
             }
-            else {
-                favourites = defaults.favourites
-                library = defaults.library
-
-                _ = favourites.mappedToDBO()
-                _ = library.mappedToDBO()
-                DataBase.shared.context.saveIfNeeded()
-            }
-
+            
             if let id = UserDefaults.standard.selected {
                 if let selected = favourites.first(where: { $0.id == id }) {
                     self.selected = selected
@@ -123,25 +125,29 @@ public extension Preset {
         }
         
         public func addNewPresets() {
-            for newPreset in newFavourites {
-                newPreset.create(DataBase.shared.context)
-                
-                if let index = favourites.index(of: newPreset, from: defaults.favourites) {
-                    favourites.insert(newPreset, at: index + 1)
-                }
-                else {
-                    favourites.append(newPreset)
+            DataBase.shared.context.performAndWait {
+                for newPreset in newFavourites {
+                    newPreset.create(DataBase.shared.context)
+                    
+                    if let index = favourites.index(of: newPreset, from: defaults.favourites) {
+                        favourites.insert(newPreset, at: index + 1)
+                    }
+                    else {
+                        favourites.append(newPreset)
+                    }
                 }
             }
         }
 
         public func hideOrRemove(_ model: ViewModel) {
-            model.inner.delete(DataBase.shared.context)
-            favourites.removeAll { model.inner == $0 }
-            library.removeAll { model.inner == $0 }
-
-            if selected == model.inner {
-                selected = favourites.first ?? library.first ?? .chatGPT
+            DataBase.shared.context.performAndWait {
+                model.inner.delete(DataBase.shared.context)
+                favourites.removeAll { model.inner == $0 }
+                library.removeAll { model.inner == $0 }
+                
+                if selected == model.inner {
+                    selected = favourites.first ?? library.first ?? .chatGPT
+                }
             }
         }
         
